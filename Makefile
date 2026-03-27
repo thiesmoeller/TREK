@@ -4,7 +4,7 @@ COMPOSE := docker compose
 
 help:
 	@echo "Available targets:"
-	@echo "  make init     Create data dirs and .env with JWT_SECRET if missing"
+	@echo "  make init     Create data dirs and .env with ENCRYPTION_KEY, UID, and GID if missing"
 	@echo "  make build    Build the Docker image"
 	@echo "  make up       Start the stack in detached mode"
 	@echo "  make down     Stop the stack"
@@ -13,11 +13,16 @@ help:
 	@echo "  make ps       Show container status"
 
 init:
-	@mkdir -p data uploads
+	@mkdir -p data uploads uploads/photos uploads/files uploads/covers uploads/avatars
 	@if [ ! -f .env ]; then \
-		echo "JWT_SECRET=$$(openssl rand -hex 32)" > .env; \
+		echo "ENCRYPTION_KEY=$$(openssl rand -hex 32)" > .env; \
+		echo "UID=$$(id -u)" >> .env; \
+		echo "GID=$$(id -g)" >> .env; \
 		echo "Created .env"; \
 	else \
+		grep -q '^ENCRYPTION_KEY=' .env || echo "ENCRYPTION_KEY=$$(openssl rand -hex 32)" >> .env; \
+		grep -q '^UID=' .env || echo "UID=$$(id -u)" >> .env; \
+		grep -q '^GID=' .env || echo "GID=$$(id -g)" >> .env; \
 		echo ".env already exists"; \
 	fi
 

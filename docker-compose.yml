@@ -3,6 +3,7 @@ services:
     build: .
     image: trek:local
     container_name: trek
+    user: "${UID:-1000}:${GID:-1000}"
     read_only: true
     security_opt:
       - no-new-privileges:true
