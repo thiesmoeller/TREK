@@ -22,9 +22,9 @@ export function setRefetchCallback(fn: RefetchCallback | null): void {
   refetchCallback = fn
 }
 
-function getWsUrl(wsToken: string): string {
+function getWsUrl(): string {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${location.host}/ws?token=${wsToken}`
+  return `${protocol}://${location.host}/ws`
 }
 
 async function fetchWsToken(): Promise<string | null> {
@@ -87,8 +87,8 @@ async function connectInternal(_isReconnect = false): Promise<void> {
     return
   }
 
-  const url = getWsUrl(wsToken)
-  socket = new WebSocket(url)
+  const url = getWsUrl()
+  socket = new WebSocket(url, ['nomad', wsToken])
 
   socket.onopen = () => {
     reconnectDelay = 1000

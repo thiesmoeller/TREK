@@ -3,6 +3,7 @@ import { useTripStore } from '../../store/tripStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useTranslation } from '../../i18n'
 import { MapPin, Clock, Calendar, Users, Sparkles } from 'lucide-react'
+import { avatarUrlFromValue } from '../../utils/uploadUrls'
 
 function formatTime(timeStr, is12h) {
   if (!timeStr) return ''
@@ -176,8 +177,8 @@ export default function WhatsNextWidget({ tripMembers = [] }: WhatsNextWidgetPro
                                 fontSize: 7, fontWeight: 700, color: 'var(--text-muted)',
                                 overflow: 'hidden', flexShrink: 0,
                               }}>
-                                {p.avatar
-                                  ? <img src={`/uploads/avatars/${p.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                {(p.avatar_url || p.avatar)
+                                  ? <img src={p.avatar_url || avatarUrlFromValue(p.avatar)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                   : p.username?.[0]?.toUpperCase()
                                 }
                               </div>

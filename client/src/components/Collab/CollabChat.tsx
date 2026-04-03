@@ -297,7 +297,7 @@ function LinkPreview({ url, tripId, own, onLoad }: LinkPreviewProps) {
   )
 }
 
-/* ── Reaction Badge with NOMAD tooltip ── */
+/* ── Reaction Badge with TREK tooltip ── */
 interface ReactionBadgeProps {
   reaction: ChatReaction
   currentUserId: number

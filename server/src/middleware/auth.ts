@@ -68,7 +68,7 @@ const adminOnly = (req: Request, res: Response, next: NextFunction): void => {
 const demoUploadBlock = (req: Request, res: Response, next: NextFunction): void => {
   const authReq = req as AuthRequest;
   if (process.env.DEMO_MODE === 'true' && authReq.user?.email === 'demo@nomad.app') {
-    res.status(403).json({ error: 'Uploads are disabled in demo mode. Self-host NOMAD for full functionality.' });
+    res.status(403).json({ error: 'Uploads are disabled in demo mode. Self-host TREK for full functionality.' });
     return;
   }
   next();

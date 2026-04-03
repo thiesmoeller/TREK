@@ -38,6 +38,7 @@ function setupWebSocket(server: http.Server): void {
     server,
     path: '/ws',
     maxPayload: 64 * 1024, // 64 KB max message size
+    handleProtocols: (protocols) => (protocols.has('nomad') ? 'nomad' : false),
     verifyClient: allowedOrigins
       ? ({ origin }, cb) => {
           if (!origin || allowedOrigins.includes(origin)) cb(true);
@@ -60,9 +61,12 @@ function setupWebSocket(server: http.Server): void {
 
   wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
     const nws = ws as NomadWebSocket;
-    // Extract token from query param
+    const requestedProtocols = String(req.headers['sec-websocket-protocol'] || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
     const url = new URL(req.url!, 'http://localhost');
-    const token = url.searchParams.get('token');
+    const token = requestedProtocols.find((protocol) => protocol !== 'nomad') || url.searchParams.get('token');
 
     if (!token) {
       nws.close(4001, 'Authentication required');

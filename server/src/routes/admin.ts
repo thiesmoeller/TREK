@@ -581,12 +581,10 @@ router.post('/rotate-jwt-secret', (req: Request, res: Response) => {
   }
   updateJwtSecret(newSecret);
   writeAudit({
-    user_id: authReq.user?.id ?? null,
-    username: authReq.user?.username ?? 'unknown',
+    userId: authReq.user?.id ?? null,
     action: 'admin.rotate_jwt_secret',
-    target_type: 'system',
-    target_id: null,
-    details: null,
+    resource: 'system',
+    details: { rotated: true },
     ip: getClientIp(req),
   });
   res.json({ success: true });

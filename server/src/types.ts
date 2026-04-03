@@ -299,4 +299,5 @@ export interface Participant {
   user_id: number;
   username: string;
   avatar?: string | null;
+  avatar_url?: string | null;
 }

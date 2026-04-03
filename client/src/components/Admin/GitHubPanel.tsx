@@ -3,7 +3,7 @@ import { Tag, Calendar, ExternalLink, ChevronDown, ChevronUp, Loader2, Heart, Co
 import { getLocaleForLanguage, useTranslation } from '../../i18n'
 import apiClient from '../../api/client'
 
-const REPO = 'mauriceboe/NOMAD'
+const REPO = 'mauriceboe/TREK'
 const PER_PAGE = 10
 
 export default function GitHubPanel() {
@@ -49,6 +49,45 @@ export default function GitHubPanel() {
     return d.toLocaleDateString(getLocaleForLanguage(language), { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
+  const renderInline = (text) => {
+    const value = String(text || '')
+    const parts = []
+    const pattern = /(\*\*.+?\*\*|`.+?`|\[[^\]]+\]\([^)]+\))/g
+    let lastIndex = 0
+    let match
+
+    while ((match = pattern.exec(value)) !== null) {
+      if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index))
+
+      const token = match[0]
+      if (token.startsWith('**') && token.endsWith('**')) {
+        parts.push(<strong key={`${match.index}-strong`}>{token.slice(2, -2)}</strong>)
+      } else if (token.startsWith('`') && token.endsWith('`')) {
+        parts.push(
+          <code key={`${match.index}-code`} style={{ fontSize: 11, padding: '1px 4px', borderRadius: 4, background: 'var(--bg-secondary)' }}>
+            {token.slice(1, -1)}
+          </code>
+        )
+      } else {
+        const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+        if (linkMatch) {
+          parts.push(
+            <a key={`${match.index}-link`} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+              {linkMatch[1]}
+            </a>
+          )
+        } else {
+          parts.push(token)
+        }
+      }
+
+      lastIndex = pattern.lastIndex
+    }
+
+    if (lastIndex < value.length) parts.push(value.slice(lastIndex))
+    return parts
+  }
+
   // Simple markdown-to-html for release notes (handles headers, bold, lists, links)
   const renderBody = (body) => {
     if (!body) return null
@@ -63,24 +102,13 @@ export default function GitHubPanel() {
             {listItems.map((item, i) => (
               <li key={i} className="flex gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
                 <span className="mt-1.5 w-1 h-1 rounded-full flex-shrink-0" style={{ background: 'var(--text-faint)' }} />
-                <span dangerouslySetInnerHTML={{ __html: inlineFormat(item) }} />
+                <span>{renderInline(item)}</span>
               </li>
             ))}
           </ul>
         )
         listItems = []
       }
-    }
-
-    const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-    const inlineFormat = (text) => {
-      return escapeHtml(text)
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`(.+?)`/g, '<code style="font-size:11px;padding:1px 4px;border-radius:4px;background:var(--bg-secondary)">$1</code>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
-          const safeUrl = url.startsWith('http://') || url.startsWith('https://') ? url : '#'
-          return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#3b82f6;text-decoration:underline">${label}</a>`
-        })
     }
 
     for (const line of lines) {
@@ -106,9 +134,9 @@ export default function GitHubPanel() {
       } else {
         flushList()
         elements.push(
-          <p key={elements.length} className="text-xs my-1" style={{ color: 'var(--text-muted)' }}
-            dangerouslySetInnerHTML={{ __html: inlineFormat(trimmed) }}
-          />
+          <p key={elements.length} className="text-xs my-1" style={{ color: 'var(--text-muted)' }}>
+            {renderInline(trimmed)}
+          </p>
         )
       }
     }

@@ -6,6 +6,8 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
+import { canAccessTrip, db as addonDb } from './db/database';
+import type { AuthRequest } from './types';
 
 const app = express();
 const DEBUG = String(process.env.DEBUG || 'false').toLowerCase() === 'true';
@@ -131,7 +133,31 @@ app.use(enforceGlobalMfaPolicy);
 // Avatars are public (shown on login, sharing screens)
 import { authenticate } from './middleware/auth';
 app.use('/uploads/avatars', express.static(path.join(__dirname, '../uploads/avatars')));
-app.use('/uploads/covers', express.static(path.join(__dirname, '../uploads/covers')));
+app.get('/api/uploads/avatars/:filename', (req: Request, res: Response) => {
+  const safeName = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../uploads/avatars', safeName);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(__dirname, '../uploads/avatars'))) {
+    return res.status(403).send('Forbidden');
+  }
+  if (!fs.existsSync(resolved)) return res.status(404).send('Not found');
+  res.sendFile(resolved);
+});
+
+app.get('/api/uploads/files/:filename', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const safeName = path.basename(req.params.filename);
+  const file = addonDb.prepare('SELECT trip_id, filename FROM trip_files WHERE filename = ?').get(safeName) as { trip_id: number; filename: string } | undefined;
+  if (!file || !canAccessTrip(file.trip_id, authReq.user.id)) return res.status(404).send('Not found');
+
+  const filePath = path.join(__dirname, '../uploads/files', safeName);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(__dirname, '../uploads/files'))) {
+    return res.status(403).send('Forbidden');
+  }
+  if (!fs.existsSync(resolved)) return res.status(404).send('Not found');
+  res.sendFile(resolved);
+});
 
 // Serve uploaded photos — require auth token or valid share token
 app.get('/uploads/photos/:filename', (req: Request, res: Response) => {
@@ -150,7 +176,7 @@ app.get('/uploads/photos/:filename', (req: Request, res: Response) => {
 
   try {
     const jwt = require('jsonwebtoken');
-    jwt.verify(token, process.env.JWT_SECRET || require('./config').JWT_SECRET);
+    jwt.verify(token, process.env.JWT_SECRET || require('./config').JWT_SECRET, { algorithms: ['HS256'] });
   } catch {
     // Check if it's a share token
     const shareRow = addonDb.prepare('SELECT id FROM share_tokens WHERE token = ?').get(token);
@@ -204,7 +230,6 @@ app.use('/api/admin', adminRoutes);
 
 // Public addons endpoint (authenticated but not admin-only)
 import { authenticate as addonAuth } from './middleware/auth';
-import {db as addonDb} from './db/database';
 import { Addon } from './types';
 app.get('/api/addons', addonAuth, (req: Request, res: Response) => {
   const addons = addonDb.prepare('SELECT id, name, type, icon, enabled FROM addons WHERE enabled = 1 ORDER BY sort_order').all() as Pick<Addon, 'id' | 'name' | 'type' | 'icon' | 'enabled'>[];

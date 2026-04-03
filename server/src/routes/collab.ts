@@ -10,6 +10,7 @@ import { validateStringLengths } from '../middleware/validate';
 import { checkPermission } from '../services/permissions';
 import { AuthRequest, CollabNote, CollabPoll, CollabMessage, TripFile } from '../types';
 import { checkSsrf, createPinnedAgent } from '../utils/ssrfGuard';
+import { uploadedFileFilter } from '../utils/uploadValidation';
 
 interface ReactionRow {
   emoji: string;
@@ -27,6 +28,7 @@ interface PollVoteRow {
 
 interface NoteFileRow {
   id: number;
+  trip_id: number;
   filename: string;
   original_name?: string;
   file_size?: number;
@@ -42,14 +44,7 @@ const noteUpload = multer({
   }),
   limits: { fileSize: MAX_NOTE_FILE_SIZE },
   defParamCharset: 'utf8',
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const BLOCKED = ['.svg', '.html', '.htm', '.xml', '.xhtml', '.js', '.jsx', '.ts', '.exe', '.bat', '.sh', '.cmd', '.msi', '.dll', '.com', '.vbs', '.ps1', '.php'];
-    if (BLOCKED.includes(ext) || file.mimetype.includes('svg') || file.mimetype.includes('html') || file.mimetype.includes('javascript')) {
-      return cb(new Error('File type not allowed'));
-    }
-    cb(null, true);
-  },
+  fileFilter: uploadedFileFilter,
 });
 
 const router = express.Router({ mergeParams: true });
@@ -62,12 +57,16 @@ function avatarUrl(user: { avatar?: string | null }): string | null {
   return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
 }
 
+function noteFileUrl(file: { id: number; trip_id: number | string }): string {
+  return `/api/trips/${file.trip_id}/files/${file.id}/download`;
+}
+
 function formatNote(note: CollabNote) {
-  const attachments = db.prepare('SELECT id, filename, original_name, file_size, mime_type FROM trip_files WHERE note_id = ?').all(note.id) as NoteFileRow[];
+  const attachments = db.prepare('SELECT id, trip_id, filename, original_name, file_size, mime_type FROM trip_files WHERE note_id = ?').all(note.id) as NoteFileRow[];
   return {
     ...note,
     avatar_url: avatarUrl(note),
-    attachments: attachments.map(a => ({ ...a, url: `/uploads/${a.filename}` })),
+    attachments: attachments.map((a) => ({ ...a, url: noteFileUrl(a) })),
   };
 }
 
@@ -219,7 +218,7 @@ router.post('/notes/:id/files', authenticate, noteUpload.single('file'), (req: R
   ).run(tripId, id, `files/${req.file.filename}`, req.file.originalname, req.file.size, req.file.mimetype);
 
   const file = db.prepare('SELECT * FROM trip_files WHERE id = ?').get(result.lastInsertRowid) as TripFile;
-  res.status(201).json({ file: { ...file, url: `/uploads/${file.filename}` } });
+  res.status(201).json({ file: { ...file, url: noteFileUrl(file) } });
   broadcast(Number(tripId), 'collab:note:updated', { note: formatNote(db.prepare('SELECT n.*, u.username, u.avatar FROM collab_notes n JOIN users u ON n.user_id = u.id WHERE n.id = ?').get(id) as CollabNote) }, req.headers['x-socket-id'] as string);
 });
 
@@ -512,53 +511,72 @@ router.get('/link-preview', authenticate, async (req: Request, res: Response) =>
   const { url } = req.query as { url?: string };
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
-  try {
-    const parsed = new URL(url);
-    const ssrf = await checkSsrf(url);
-    if (!ssrf.allowed) {
-      return res.status(400).json({ error: ssrf.error });
+  const fetch = require('node-fetch');
+
+  const fetchPreviewHtml = async (targetUrl: string, redirects = 0): Promise<string> => {
+    if (redirects > 3) throw new Error('Too many redirects');
+
+    const parsed = new URL(targetUrl);
+    const ssrf = await checkSsrf(targetUrl);
+    if (!ssrf.allowed || !ssrf.resolvedIp) {
+      throw new Error(ssrf.error || 'URL is not allowed');
     }
 
-    const nodeFetch = require('node-fetch');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    nodeFetch(url, {
-      redirect: 'error',
-      signal: controller.signal,
-      agent: createPinnedAgent(ssrf.resolvedIp!, parsed.protocol),
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NOMAD/1.0; +https://github.com/mauriceboe/NOMAD)' },
-    })
-      .then((r: { ok: boolean; text: () => Promise<string> }) => {
-        clearTimeout(timeout);
-        if (!r.ok) throw new Error('Fetch failed');
-        return r.text();
-      })
-      .then((html: string) => {
-        const get = (prop: string) => {
-          const m = html.match(new RegExp(`<meta[^>]*property=["']og:${prop}["'][^>]*content=["']([^"']*)["']`, 'i'))
-            || html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*property=["']og:${prop}["']`, 'i'));
-          return m ? m[1] : null;
-        };
-        const titleTag = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-        const descMeta = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
-          || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
-
-        res.json({
-          title: get('title') || (titleTag ? titleTag[1].trim() : null),
-          description: get('description') || (descMeta ? descMeta[1].trim() : null),
-          image: get('image') || null,
-          site_name: get('site_name') || null,
-          url,
-        });
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        res.json({ title: null, description: null, image: null, url });
+    try {
+      const response = await fetch(parsed.toString(), {
+        signal: controller.signal,
+        redirect: 'manual',
+        agent: createPinnedAgent(ssrf.resolvedIp, parsed.protocol),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TREK/1.0; +https://github.com/mauriceboe/TREK)' },
       });
-  } catch {
-    res.json({ title: null, description: null, image: null, url });
-  }
+
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Redirect without location');
+        return fetchPreviewHtml(new URL(location, parsed).toString(), redirects + 1);
+      }
+
+      if (!response.ok) throw new Error('Fetch failed');
+
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (contentLength > 1024 * 1024) throw new Error('Preview too large');
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (contentType && !contentType.includes('text/html') && !contentType.startsWith('text/')) {
+        throw new Error('Unsupported content type');
+      }
+
+      return response.text();
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  fetchPreviewHtml(String(url))
+    .then((html: string) => {
+      const get = (prop: string) => {
+        const m = html.match(new RegExp(`<meta[^>]*property=["']og:${prop}["'][^>]*content=["']([^"']*)["']`, 'i'))
+          || html.match(new RegExp(`<meta[^>]*content=["']([^"']*)["'][^>]*property=["']og:${prop}["']`, 'i'));
+        return m ? m[1] : null;
+      };
+      const titleTag = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+      const descMeta = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
+        || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
+
+      res.json({
+        title: get('title') || (titleTag ? titleTag[1].trim() : null),
+        description: get('description') || (descMeta ? descMeta[1].trim() : null),
+        image: get('image') || null,
+        site_name: get('site_name') || null,
+        url,
+      });
+    })
+    .catch(() => {
+      res.json({ title: null, description: null, image: null, url });
+    });
 });
 
 export default router;

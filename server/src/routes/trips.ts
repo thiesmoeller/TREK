@@ -52,6 +52,49 @@ const TRIP_SELECT = `
   JOIN users u ON u.id = t.user_id
 `;
 
+function avatarUrl(user: { avatar?: string | null }): string | null {
+  return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
+}
+
+function tripCoverApiUrl(tripId: number | string): string {
+  return `/api/trips/${tripId}/cover`;
+}
+
+function normalizeStoredUploadPath(value: string | null | undefined): string | null {
+  if (!value) return null;
+
+  let normalized = String(value).trim();
+  if (!normalized) return null;
+
+  normalized = normalized.split('?')[0].split('#')[0];
+  normalized = normalized.replace(/^https?:\/\/[^/]+/i, '');
+  normalized = normalized.replace(/^\/+/, '');
+
+  if (normalized.startsWith('api/uploads/')) normalized = normalized.slice('api/uploads/'.length);
+  if (normalized.startsWith('uploads/')) normalized = normalized.slice('uploads/'.length);
+
+  return normalized || null;
+}
+
+function normalizeCoverStoragePath(coverImage: string | null | undefined): string | null {
+  const normalized = normalizeStoredUploadPath(coverImage);
+  if (!normalized || !normalized.startsWith('covers/')) return null;
+
+  const filename = path.basename(normalized);
+  return filename ? `covers/${filename}` : null;
+}
+
+function formatTrip<T extends { id: number | string; cover_image?: string | null }>(trip: T | null | undefined): T | null | undefined {
+  if (!trip) return trip;
+  const normalized = normalizeStoredUploadPath(trip.cover_image);
+  return {
+    ...trip,
+    cover_image: normalized && normalized.startsWith('covers/')
+      ? tripCoverApiUrl(trip.id)
+      : null,
+  };
+}
+
 function generateDays(tripId: number | bigint | string, startDate: string | null, endDate: string | null) {
   const existing = db.prepare('SELECT id, day_number, date FROM days WHERE trip_id = ?').all(tripId) as { id: number; day_number: number; date: string | null }[];
 
@@ -132,7 +175,7 @@ router.get('/', authenticate, (req: Request, res: Response) => {
     WHERE (t.user_id = :userId OR m.user_id IS NOT NULL) AND t.is_archived = :archived
     ORDER BY t.created_at DESC
   `).all({ userId, archived });
-  res.json({ trips });
+  res.json({ trips: trips.map(formatTrip) });
 });
 
 router.post('/', authenticate, (req: Request, res: Response) => {
@@ -157,8 +200,8 @@ router.post('/', authenticate, (req: Request, res: Response) => {
   if (rd > 0) {
     logInfo(`${authReq.user.email} set ${rd}-day reminder for trip "${title}"`);
   }
-  const trip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: authReq.user.id, tripId });
-  res.status(201).json({ trip });
+  const trip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: authReq.user.id, tripId }) as (Trip & { id: number | string; cover_image?: string | null }) | undefined;
+  res.status(201).json({ trip: formatTrip(trip) });
 });
 
 router.get('/:id', authenticate, (req: Request, res: Response) => {
@@ -168,9 +211,28 @@ router.get('/:id', authenticate, (req: Request, res: Response) => {
     ${TRIP_SELECT}
     LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
     WHERE t.id = :tripId AND (t.user_id = :userId OR m.user_id IS NOT NULL)
-  `).get({ userId, tripId: req.params.id });
+  `).get({ userId, tripId: req.params.id }) as (Trip & { id: number | string; cover_image?: string | null }) | undefined;
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
-  res.json({ trip });
+  res.json({ trip: formatTrip(trip) });
+});
+
+router.get('/:id/cover', authenticate, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  const access = canAccessTrip(req.params.id, authReq.user.id);
+  if (!access) return res.status(404).json({ error: 'Trip not found' });
+
+  const trip = db.prepare('SELECT cover_image FROM trips WHERE id = ?').get(req.params.id) as Pick<Trip, 'cover_image'> | undefined;
+  const storedPath = normalizeStoredUploadPath(trip?.cover_image);
+  if (!storedPath?.startsWith('covers/')) return res.status(404).json({ error: 'Cover not found' });
+
+  const filename = path.basename(storedPath);
+  const filePath = path.join(coversDir, filename);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(coversDir))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (!fs.existsSync(resolved)) return res.status(404).json({ error: 'Cover not found' });
+  res.sendFile(resolved);
 });
 
 router.put('/:id', authenticate, (req: Request, res: Response) => {
@@ -211,7 +273,9 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
   const newEnd = end_date !== undefined ? end_date : trip.end_date;
   const newCurrency = currency || trip.currency;
   const newArchived = is_archived !== undefined ? (is_archived ? 1 : 0) : trip.is_archived;
-  const newCover = cover_image !== undefined ? cover_image : trip.cover_image;
+  const newCover = cover_image !== undefined
+    ? (cover_image === tripCoverApiUrl(req.params.id) ? trip.cover_image : normalizeCoverStoragePath(cover_image))
+    : trip.cover_image;
   const newReminder = reminder_days !== undefined ? (Number(reminder_days) >= 0 && Number(reminder_days) <= 30 ? Number(reminder_days) : (trip as any).reminder_days) : (trip as any).reminder_days;
 
   db.prepare(`
@@ -247,9 +311,10 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
     }
   }
 
-  const updatedTrip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: authReq.user.id, tripId: req.params.id });
-  res.json({ trip: updatedTrip });
-  broadcast(req.params.id, 'trip:updated', { trip: updatedTrip }, req.headers['x-socket-id'] as string);
+  const updatedTrip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId: authReq.user.id, tripId: req.params.id }) as (Trip & { id: number | string; cover_image?: string | null }) | undefined;
+  const formattedTrip = formatTrip(updatedTrip);
+  res.json({ trip: formattedTrip });
+  broadcast(req.params.id, 'trip:updated', { trip: formattedTrip }, req.headers['x-socket-id'] as string);
 });
 
 router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cover'), (req: Request, res: Response) => {
@@ -266,17 +331,16 @@ router.post('/:id/cover', authenticate, demoUploadBlock, uploadCover.single('cov
   if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
   if (trip.cover_image) {
-    const oldPath = path.join(__dirname, '../../', trip.cover_image.replace(/^\//, ''));
-    const resolvedPath = path.resolve(oldPath);
-    const uploadsDir = path.resolve(__dirname, '../../uploads');
-    if (resolvedPath.startsWith(uploadsDir) && fs.existsSync(resolvedPath)) {
-      fs.unlinkSync(resolvedPath);
+    const storedPath = normalizeStoredUploadPath(trip.cover_image);
+    if (storedPath?.startsWith('covers/')) {
+      const oldPath = path.join(coversDir, path.basename(storedPath));
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
   }
 
-  const coverUrl = `/uploads/covers/${req.file.filename}`;
-  db.prepare('UPDATE trips SET cover_image=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(coverUrl, req.params.id);
-  res.json({ cover_image: coverUrl });
+  const storedCoverPath = `covers/${req.file.filename}`;
+  db.prepare('UPDATE trips SET cover_image=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(storedCoverPath, req.params.id);
+  res.json({ cover_image: tripCoverApiUrl(req.params.id) });
 });
 
 router.delete('/:id', authenticate, (req: Request, res: Response) => {
@@ -322,8 +386,8 @@ router.get('/:id/members', authenticate, (req: Request, res: Response) => {
   const owner = db.prepare('SELECT id, username, email, avatar FROM users WHERE id = ?').get(tripOwnerId) as Pick<User, 'id' | 'username' | 'email' | 'avatar'>;
 
   res.json({
-    owner: { ...owner, role: 'owner', avatar_url: owner.avatar ? `/uploads/avatars/${owner.avatar}` : null },
-    members: members.map(m => ({ ...m, avatar_url: m.avatar ? `/uploads/avatars/${m.avatar}` : null })),
+    owner: { ...owner, role: 'owner', avatar_url: avatarUrl(owner) },
+    members: members.map(m => ({ ...m, avatar_url: avatarUrl(m) })),
     current_user_id: authReq.user.id,
   });
 });
@@ -335,6 +399,9 @@ router.post('/:id/members', authenticate, (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Trip not found' });
 
   const tripOwnerId = access.user_id;
+  if (tripOwnerId !== authReq.user.id) {
+    return res.status(403).json({ error: 'Only the owner can invite members' });
+  }
   const isMember = tripOwnerId !== authReq.user.id;
   if (!checkPermission('member_manage', authReq.user.role, tripOwnerId, authReq.user.id, isMember))
     return res.status(403).json({ error: 'No permission to manage members' });
@@ -362,7 +429,7 @@ router.post('/:id/members', authenticate, (req: Request, res: Response) => {
     notify({ userId: target.id, event: 'trip_invite', params: { trip: tripInfo?.title || 'Untitled', actor: authReq.user.email, invitee: target.email } }).catch(() => {});
   });
 
-  res.status(201).json({ member: { ...target, role: 'member', avatar_url: target.avatar ? `/uploads/avatars/${target.avatar}` : null } });
+  res.status(201).json({ member: { ...target, role: 'member', avatar_url: avatarUrl(target) } });
 });
 
 router.delete('/:id/members/:userId', authenticate, (req: Request, res: Response) => {

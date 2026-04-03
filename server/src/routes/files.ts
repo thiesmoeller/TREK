@@ -12,6 +12,7 @@ import { requireTripAccess } from '../middleware/tripAccess';
 import { broadcast } from '../websocket';
 import { AuthRequest, TripFile } from '../types';
 import { checkPermission } from '../services/permissions';
+import { uploadedFileFilter } from '../utils/uploadValidation';
 
 const router = express.Router({ mergeParams: true });
 
@@ -29,33 +30,11 @@ const storage = multer.diskStorage({
   },
 });
 
-const DEFAULT_ALLOWED_EXTENSIONS = 'jpg,jpeg,png,gif,webp,heic,pdf,doc,docx,xls,xlsx,txt,csv';
-const BLOCKED_EXTENSIONS = ['.svg', '.html', '.htm', '.xml'];
-
-function getAllowedExtensions(): string {
-  try {
-    const row = db.prepare("SELECT value FROM app_settings WHERE key = 'allowed_file_types'").get() as { value: string } | undefined;
-    return row?.value || DEFAULT_ALLOWED_EXTENSIONS;
-  } catch { return DEFAULT_ALLOWED_EXTENSIONS; }
-}
-
 const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE },
   defParamCharset: 'utf8',
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (BLOCKED_EXTENSIONS.includes(ext) || file.mimetype.includes('svg')) {
-      return cb(new Error('File type not allowed'));
-    }
-    const allowed = getAllowedExtensions().split(',').map(e => e.trim().toLowerCase());
-    const fileExt = ext.replace('.', '');
-    if (allowed.includes(fileExt) || (allowed.includes('*') && !BLOCKED_EXTENSIONS.includes(ext))) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
-    }
-  },
+  fileFilter: uploadedFileFilter,
 });
 
 function verifyTripOwnership(tripId: string | number, userId: number) {

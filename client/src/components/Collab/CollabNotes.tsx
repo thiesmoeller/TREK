@@ -10,6 +10,7 @@ import { useTripStore } from '../../store/tripStore'
 import { addListener, removeListener } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
 import type { User } from '../../types'
+import { avatarUrlFromValue, fileUrlFromValue } from '../../utils/uploadUrls'
 
 interface NoteFile {
   id: number
@@ -97,7 +98,7 @@ interface FilePreviewPortalProps {
 
 function FilePreviewPortal({ file, onClose }: FilePreviewPortalProps) {
   if (!file) return null
-  const url = file.url || `/uploads/${file.filename}`
+  const url = file.url || fileUrlFromValue(file.filename)
   const isImage = file.mime_type?.startsWith('image/')
   const isPdf = file.mime_type === 'application/pdf'
   const isTxt = file.mime_type?.startsWith('text/')
@@ -709,7 +710,7 @@ interface NoteCardProps {
 function NoteCard({ note, currentUser, canEdit, onUpdate, onDelete, onEdit, onView, onPreviewFile, getCategoryColor, tripId, t }: NoteCardProps) {
   const [hovered, setHovered] = useState(false)
 
-  const author = note.author || note.user || { username: note.username, avatar: note.avatar_url || (note.avatar ? `/uploads/avatars/${note.avatar}` : null) }
+  const author = note.author || note.user || { username: note.username, avatar: note.avatar_url || avatarUrlFromValue(note.avatar) }
   const color = getCategoryColor ? getCategoryColor(note.category) : (note.color || '#6366f1')
 
   const handleTogglePin = useCallback(() => {

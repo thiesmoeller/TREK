@@ -22,7 +22,7 @@ interface WikiCommonsPage {
   imageinfo?: { url?: string; extmetadata?: { Artist?: { value?: string } } }[];
 }
 
-const UA = 'TREK Travel Planner (https://github.com/mauriceboe/NOMAD)';
+const UA = 'TREK Travel Planner (https://github.com/mauriceboe/TREK)';
 
 // ── OSM Enrichment: Overpass API for details ──────────────────────────────────
 
@@ -232,7 +232,7 @@ async function searchNominatim(query: string, lang?: string) {
     'accept-language': lang || 'en',
   });
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-    headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/mauriceboe/NOMAD)' },
+    headers: { 'User-Agent': 'TREK Travel Planner (https://github.com/mauriceboe/TREK)' },
   });
   if (!response.ok) throw new Error('Nominatim API error');
   const data = await response.json() as NominatimResult[];

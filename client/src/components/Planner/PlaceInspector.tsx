@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
+import { avatarUrlFromValue } from '../../utils/uploadUrls'
 
 const detailsCache = new Map()
 
@@ -758,7 +759,7 @@ function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticip
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 7, fontWeight: 700,
                 color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
               }}>
-                {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || `/uploads/avatars/${member.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+                {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || avatarUrlFromValue(member.avatar)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
               </div>
               <span style={{ textDecoration: isHovered && canRemove ? 'line-through' : 'none' }}>{member.username}</span>
             </div>
@@ -798,7 +799,7 @@ function ParticipantsBox({ tripMembers, participantIds, allJoined, onSetParticip
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700,
                       color: 'var(--text-muted)', overflow: 'hidden', flexShrink: 0,
                     }}>
-                      {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || `/uploads/avatars/${member.avatar}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
+                      {(member.avatar_url || member.avatar) ? <img src={member.avatar_url || avatarUrlFromValue(member.avatar)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : member.username?.[0]?.toUpperCase()}
                     </div>
                     {member.username}
                   </button>

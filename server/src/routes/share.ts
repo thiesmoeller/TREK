@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { db, canAccessTrip } from '../db/database';
 import { authenticate } from '../middleware/auth';
 import { checkPermission } from '../services/permissions';
@@ -7,6 +9,10 @@ import { AuthRequest } from '../types';
 import { loadTagsByPlaceIds } from '../services/queryHelpers';
 
 const router = express.Router();
+
+function sharedCoverUrl(token: string): string {
+  return `/api/shared/${token}/cover`;
+}
 
 // Create a share link for a trip (owner/member only)
 router.post('/trips/:tripId/share-link', authenticate, (req: Request, res: Response) => {
@@ -66,8 +72,9 @@ router.get('/shared/:token', (req: Request, res: Response) => {
   const tripId = shareRow.trip_id;
 
   // Trip
-  const trip = db.prepare('SELECT id, title, description, start_date, end_date, cover_image, currency FROM trips WHERE id = ?').get(tripId);
+  const trip = db.prepare('SELECT id, title, description, start_date, end_date, cover_image, currency FROM trips WHERE id = ?').get(tripId) as any;
   if (!trip) return res.status(404).json({ error: 'Trip not found' });
+  trip.cover_image = trip.cover_image ? sharedCoverUrl(token) : null;
 
   // Days with assignments
   const days = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number ASC').all(tripId) as any[];
@@ -167,6 +174,26 @@ router.get('/shared/:token', (req: Request, res: Response) => {
     budget: permissions.share_budget ? budget : [],
     collab: collabMessages,
   });
+});
+
+router.get('/shared/:token/cover', (req: Request, res: Response) => {
+  const { token } = req.params;
+  const shareRow = db.prepare('SELECT trip_id FROM share_tokens WHERE token = ?').get(token) as { trip_id: number } | undefined;
+  if (!shareRow) return res.status(404).send('Not found');
+
+  const trip = db.prepare('SELECT cover_image FROM trips WHERE id = ?').get(shareRow.trip_id) as { cover_image?: string | null } | undefined;
+  const storedPath = String(trip?.cover_image || '');
+  if (!storedPath.startsWith('covers/')) return res.status(404).send('Not found');
+
+  const filename = storedPath.split('/').pop();
+  if (!filename) return res.status(404).send('Not found');
+
+  const filePath = path.join(__dirname, '../../uploads/covers', filename);
+  const resolved = path.resolve(filePath);
+  const coversRoot = path.resolve(__dirname, '../../uploads/covers');
+  if (!resolved.startsWith(coversRoot)) return res.status(403).send('Forbidden');
+  if (!fs.existsSync(resolved)) return res.status(404).send('Not found');
+  res.sendFile(resolved);
 });
 
 export default router;

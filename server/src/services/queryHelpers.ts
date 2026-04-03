@@ -12,6 +12,10 @@ interface ParticipantRow {
   avatar: string | null;
 }
 
+function avatarUrl(user: { avatar?: string | null }): string | null {
+  return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
+}
+
 /** Batch-load tags for multiple places in a single query, indexed by place ID. */
 function loadTagsByPlaceIds(placeIds: number[], { compact }: { compact?: boolean } = {}): Record<number, Partial<Tag>[]> {
   const tagsByPlaceId: Record<number, Partial<Tag>[]> = {};
@@ -45,7 +49,7 @@ function loadParticipantsByAssignmentIds(assignmentIds: number[]): Record<number
       .all(...assignmentIds) as ParticipantRow[];
     for (const p of allParticipants) {
       if (!participantsByAssignment[p.assignment_id]) participantsByAssignment[p.assignment_id] = [];
-      participantsByAssignment[p.assignment_id].push({ user_id: p.user_id, username: p.username, avatar: p.avatar });
+      participantsByAssignment[p.assignment_id].push({ user_id: p.user_id, username: p.username, avatar: p.avatar, avatar_url: avatarUrl(p) });
     }
   }
   return participantsByAssignment;

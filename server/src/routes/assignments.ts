@@ -9,6 +9,16 @@ import { AuthRequest, AssignmentRow, DayAssignment, Tag, Participant } from '../
 
 const router = express.Router({ mergeParams: true });
 
+interface AssignmentParticipantRow {
+  user_id: number;
+  username: string;
+  avatar?: string | null;
+}
+
+function avatarUrl(user: { avatar?: string | null }): string | null {
+  return user.avatar ? `/uploads/avatars/${user.avatar}` : null;
+}
+
 function getAssignmentWithPlace(assignmentId: number | bigint) {
   const a = db.prepare(`
     SELECT da.*, p.id as place_id, p.name as place_name, p.description as place_description,
@@ -37,7 +47,7 @@ function getAssignmentWithPlace(assignmentId: number | bigint) {
     FROM assignment_participants ap
     JOIN users u ON ap.user_id = u.id
     WHERE ap.assignment_id = ?
-  `).all(a.id);
+  `).all(a.id) as AssignmentParticipantRow[];
 
   return {
     id: a.id,
@@ -215,9 +225,10 @@ router.get('/trips/:tripId/assignments/:id/participants', authenticate, requireT
     FROM assignment_participants ap
     JOIN users u ON ap.user_id = u.id
     WHERE ap.assignment_id = ?
-  `).all(id);
+  `).all(id) as AssignmentParticipantRow[];
 
-  res.json({ participants });
+  const formattedParticipants = participants.map((p) => ({ ...p, avatar_url: avatarUrl(p) }));
+  res.json({ participants: formattedParticipants });
 });
 
 router.put('/trips/:tripId/assignments/:id/time', authenticate, requireTripAccess, (req: Request, res: Response) => {
@@ -264,10 +275,11 @@ router.put('/trips/:tripId/assignments/:id/participants', authenticate, requireT
     FROM assignment_participants ap
     JOIN users u ON ap.user_id = u.id
     WHERE ap.assignment_id = ?
-  `).all(id);
+  `).all(id) as AssignmentParticipantRow[];
 
-  res.json({ participants });
-  broadcast(Number(tripId), 'assignment:participants', { assignmentId: Number(id), participants }, req.headers['x-socket-id'] as string);
+  const formattedParticipants = participants.map((p) => ({ ...p, avatar_url: avatarUrl(p) }));
+  res.json({ participants: formattedParticipants });
+  broadcast(Number(tripId), 'assignment:participants', { assignmentId: Number(id), participants: formattedParticipants }, req.headers['x-socket-id'] as string);
 });
 
 export default router;
