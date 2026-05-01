@@ -168,6 +168,39 @@ describe('GET /api/auth/oidc/callback', () => {
     expect(res.headers.location).toContain('/login?oidc_code=');
   });
 
+  it('OIDC-004b: OIDC session remains valid after password_version bump', async () => {
+    const { user } = createUser(testDb, { email: 'alice@example.com' });
+    testDb.prepare('UPDATE users SET password_version = 1 WHERE id = ?').run(user.id);
+
+    mockDiscover.mockResolvedValueOnce(MOCK_DISCOVERY_DOC);
+    mockExchangeCode.mockResolvedValueOnce({
+      access_token: 'test-access-token',
+      id_token: 'fake.id.token',
+      _ok: true,
+      _status: 200,
+    });
+    mockVerifyIdToken.mockResolvedValueOnce({ ok: true, claims: { sub: 'sub-alice-123' } });
+    mockGetUserInfo.mockResolvedValueOnce({
+      sub: 'sub-alice-123',
+      email: 'alice@example.com',
+      name: 'Alice',
+    });
+
+    const state = oidcService.createState('http://localhost:3001/api/auth/oidc/callback');
+    const callbackRes = await request(app).get(`/api/auth/oidc/callback?code=authcode123&state=${state}`);
+    const code = new URL(callbackRes.headers.location, 'http://localhost:5173').searchParams.get('oidc_code');
+    expect(code).toBeTruthy();
+
+    const exchangeRes = await request(app).get(`/api/auth/oidc/exchange?code=${encodeURIComponent(code!)}`);
+    expect(exchangeRes.status).toBe(200);
+
+    const meRes = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', exchangeRes.headers['set-cookie']);
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.user.id).toBe(user.id);
+  });
+
   it('OIDC-005: new user gets created when registration is open', async () => {
     mockDiscover.mockResolvedValueOnce(MOCK_DISCOVERY_DOC);
     mockExchangeCode.mockResolvedValueOnce({ access_token: 'new-token', id_token: 'fake.id.token', _ok: true, _status: 200 });

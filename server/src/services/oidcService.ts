@@ -190,8 +190,11 @@ export function frontendUrl(path: string): string {
   return base + path;
 }
 
-export function generateToken(user: { id: number }): string {
-  return jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
+export function generateToken(user: { id: number | bigint; password_version?: number }): string {
+  const pv = typeof user.password_version === 'number'
+    ? user.password_version
+    : ((db.prepare('SELECT password_version FROM users WHERE id = ?').get(user.id) as { password_version?: number } | undefined)?.password_version ?? 0);
+  return jwt.sign({ id: user.id, pv }, JWT_SECRET, { expiresIn: '24h', algorithm: 'HS256' });
 }
 
 export function getAppUrl(): string | null {
