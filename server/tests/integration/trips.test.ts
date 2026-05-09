@@ -489,6 +489,45 @@ describe('Update trip', () => {
     const all = testDb.prepare('SELECT * FROM day_assignments WHERE id IN (?, ?)').all(a4.id, a5.id) as { id: number }[];
     expect(all).toHaveLength(2);
   });
+
+  it('TRIP-025 — Shifting trip by fixed offset also shifts owner vacay entries in old trip range', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-08-01', end_date: '2026-08-09' });
+
+    // Materialize a vacay plan + entries that currently match the old trip week.
+    const planRes = testDb.prepare('INSERT INTO vacay_plans (owner_id) VALUES (?)').run(user.id);
+    const planId = Number(planRes.lastInsertRowid);
+    testDb.prepare('INSERT INTO vacay_years (plan_id, year) VALUES (?, ?)').run(planId, 2026);
+    testDb.prepare(
+      'INSERT INTO vacay_user_years (user_id, plan_id, year, vacation_days, carried_over) VALUES (?, ?, ?, 30, 0)'
+    ).run(user.id, planId, 2026);
+    for (const date of ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07']) {
+      testDb.prepare('INSERT INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)').run(planId, user.id, date, '');
+    }
+
+    const res = await request(app)
+      .put(`/api/trips/${trip.id}`)
+      .set('Cookie', authCookie(user.id))
+      .send({ start_date: '2026-08-08', end_date: '2026-08-16' });
+
+    expect(res.status).toBe(200);
+
+    const oldEntries = testDb.prepare(
+      "SELECT date FROM vacay_entries WHERE plan_id = ? AND user_id = ? AND date BETWEEN '2026-08-01' AND '2026-08-09' ORDER BY date"
+    ).all(planId, user.id) as { date: string }[];
+    expect(oldEntries).toHaveLength(0);
+
+    const shiftedEntries = testDb.prepare(
+      "SELECT date FROM vacay_entries WHERE plan_id = ? AND user_id = ? AND date BETWEEN '2026-08-08' AND '2026-08-16' ORDER BY date"
+    ).all(planId, user.id) as { date: string }[];
+    expect(shiftedEntries.map(e => e.date)).toEqual([
+      '2026-08-10',
+      '2026-08-11',
+      '2026-08-12',
+      '2026-08-13',
+      '2026-08-14',
+    ]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

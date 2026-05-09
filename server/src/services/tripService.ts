@@ -3,6 +3,7 @@ import fs from 'fs';
 import { db, canAccessTrip, isOwner } from '../db/database';
 import { Trip, User } from '../types';
 import { listDays, listAccommodations } from './dayService';
+import { getActivePlanId } from './vacayService';
 import { listBudgetItems } from './budgetService';
 import { listItems as listPackingItems } from './packingService';
 import { listReservations } from './reservationService';
@@ -212,6 +213,69 @@ export interface UpdateTripResult {
   oldReminder: number;
 }
 
+function parseIsoDateToUtcMs(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return Date.UTC(y, (m || 1) - 1, d || 1);
+}
+
+function utcMsToIsoDate(ms: number): string {
+  const d = new Date(ms);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Keep vacay entries aligned when a trip range is shifted by a fixed offset.
+ * We only sync when both old/new ranges are present and have identical length.
+ */
+function syncVacayEntriesForTripDateShift(
+  tripOwnerId: number,
+  oldStart: string | null,
+  oldEnd: string | null,
+  newStart: string | null,
+  newEnd: string | null,
+) {
+  if (!oldStart || !oldEnd || !newStart || !newEnd) return;
+
+  const oldStartMs = parseIsoDateToUtcMs(oldStart);
+  const oldEndMs = parseIsoDateToUtcMs(oldEnd);
+  const newStartMs = parseIsoDateToUtcMs(newStart);
+  const newEndMs = parseIsoDateToUtcMs(newEnd);
+
+  const oldSpanDays = Math.floor((oldEndMs - oldStartMs) / MS_PER_DAY) + 1;
+  const newSpanDays = Math.floor((newEndMs - newStartMs) / MS_PER_DAY) + 1;
+  if (oldSpanDays !== newSpanDays) return;
+
+  const deltaDays = Math.floor((newStartMs - oldStartMs) / MS_PER_DAY);
+  if (deltaDays === 0) return;
+
+  const planId = getActivePlanId(tripOwnerId);
+  const entries = db.prepare(
+    `SELECT id, date, note
+     FROM vacay_entries
+     WHERE plan_id = ? AND user_id = ? AND date >= ? AND date <= ?`
+  ).all(planId, tripOwnerId, oldStart, oldEnd) as { id: number; date: string; note: string }[];
+
+  if (entries.length === 0) return;
+
+  const delEntry = db.prepare('DELETE FROM vacay_entries WHERE id = ?');
+  const insertEntry = db.prepare(
+    'INSERT OR IGNORE INTO vacay_entries (plan_id, user_id, date, note) VALUES (?, ?, ?, ?)'
+  );
+
+  const tx = db.transaction(() => {
+    for (const e of entries) delEntry.run(e.id);
+    for (const e of entries) {
+      const shiftedDate = utcMsToIsoDate(parseIsoDateToUtcMs(e.date) + deltaDays * MS_PER_DAY);
+      insertEntry.run(planId, tripOwnerId, shiftedDate, e.note ?? '');
+    }
+  });
+
+  tx();
+}
+
 export function updateTrip(tripId: string | number, userId: number, data: UpdateTripData, userRole: string): UpdateTripResult {
   const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as Trip & { reminder_days?: number } | undefined;
   if (!trip) throw new NotFoundError('Trip not found');
@@ -242,6 +306,16 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
   const dayCount = data.day_count ? Math.min(Math.max(Number(data.day_count) || 7, 1), MAX_TRIP_DAYS) : undefined;
   if (newStart !== trip.start_date || newEnd !== trip.end_date || dayCount)
     generateDays(tripId, newStart || null, newEnd || null, undefined, dayCount);
+
+  if (newStart !== trip.start_date || newEnd !== trip.end_date) {
+    syncVacayEntriesForTripDateShift(
+      trip.user_id,
+      trip.start_date || null,
+      trip.end_date || null,
+      newStart || null,
+      newEnd || null,
+    );
+  }
 
   const changes: Record<string, unknown> = {};
   if (title && title !== trip.title) changes.title = title;
