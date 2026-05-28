@@ -5,7 +5,8 @@
   "workspaces": [
     "client",
     "server",
-    "shared"
+    "shared",
+    "packages/rowing-planner"
   ],
   "scripts": {
     "version:major": "npm version major --workspaces --include-workspace-root --no-git-tag-version",
@@ -17,7 +18,7 @@
     "version:prerelease": "npm version prerelease --preid=pre --workspaces --include-workspace-root --no-git-tag-version",
     "dev": "npm run build --workspace=shared && concurrently --names shared,server,client \"npm run build:watch --workspace=shared\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
     "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
-    "test": "npm run test --workspace=shared && npm run test --workspace=server && npm run test --workspace=client",
+    "test": "npm run test --workspace=shared && npm run test --workspace=@trek/rowing-planner && npm run test --workspace=server && npm run test --workspace=client",
     "test:cov": "npm run test:coverage --workspace=server && npm run test:coverage --workspace=client",
     "test:e2e": "npm run test:e2e --workspace=server",
     "lint": "npm run lint --workspace=shared && npm run lint --workspace=server && npm run lint --workspace=client",
@@ -28,9 +29,12 @@
     "concurrently": "^9.2.1"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-musl": "4.60.4",
-    "@rollup/rollup-linux-arm64-musl": "4.60.4",
+    "@img/sharp-linuxmusl-arm64": "0.33.5",
     "@img/sharp-linuxmusl-x64": "0.33.5",
-    "@img/sharp-linuxmusl-arm64": "0.33.5"
+    "@rollup/rollup-linux-arm64-musl": "4.60.4",
+    "@rollup/rollup-linux-x64-musl": "4.60.4"
+  },
+  "dependencies": {
+    "typescript": "^6.0.3"
   }
 }
