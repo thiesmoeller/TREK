@@ -36,6 +36,7 @@ import { listItems as listTodoItems } from '../services/todoService';
 import { listBudgetItems } from '../services/budgetService';
 import { listReservations } from '../services/reservationService';
 import { listFiles } from '../services/fileService';
+import { computeGearShuttleRoutes } from '../services/gearShuttleRouteService';
 
 const router = express.Router();
 
@@ -103,7 +104,17 @@ router.post('/', authenticate, (req: Request, res: Response) => {
     return res.status(400).json({ error: 'End date must be after start date' });
 
   const parsedDayCount = day_count ? Math.min(Math.max(Number(day_count) || 7, 1), 365) : undefined;
-  const { trip, tripId, reminderDays } = createTrip(authReq.user.id, { title, description, start_date, end_date, currency, reminder_days, day_count: parsedDayCount });
+  const drkRaw = typeof req.body.default_route_leg_kind === 'string' || req.body.default_route_leg_kind === null
+    ? req.body.default_route_leg_kind
+    : undefined;
+  const { trip, tripId, reminderDays } = createTrip(authReq.user.id, {
+    title, description, start_date, end_date, currency, reminder_days,
+    day_count: parsedDayCount,
+    is_rowing_trip: req.body.is_rowing_trip,
+    ...(drkRaw !== undefined ? { default_route_leg_kind: drkRaw } : {}),
+    rowing_speed_kmh: req.body.rowing_speed_kmh,
+    rowing_lock_delay_min: req.body.rowing_lock_delay_min,
+  });
 
   writeAudit({ userId: authReq.user.id, action: 'trip.create', ip: getClientIp(req), details: { tripId, title, reminder_days: reminderDays === 0 ? 'none' : `${reminderDays} days` } });
   if (reminderDays > 0) {
@@ -113,6 +124,22 @@ router.post('/', authenticate, (req: Request, res: Response) => {
   res.status(201).json({ trip });
 });
 
+router.get('/:id/gear-route', authenticate, async (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (!canAccessTrip(req.params.id, authReq.user.id))
+    return res.status(404).json({ error: 'Trip not found' });
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 55000);
+  try {
+    const result = await computeGearShuttleRoutes(Number(req.params.id), { signal: controller.signal });
+    clearTimeout(t);
+    if ('error' in result) return res.status(400).json(result);
+    return res.json(result);
+  } catch (e: unknown) {
+    clearTimeout(t);
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'gear_route_failed' });
+  }
+});
 // ── Get trip ──────────────────────────────────────────────────────────────
 
 router.get('/:id', authenticate, (req: Request, res: Response) => {
@@ -143,7 +170,10 @@ router.put('/:id', authenticate, (req: Request, res: Response) => {
       return res.status(403).json({ error: 'No permission to change cover image' });
   }
   // General edit check (title, description, dates, currency, reminder_days)
-  const editFields = ['title', 'description', 'start_date', 'end_date', 'currency', 'reminder_days', 'day_count'];
+  const editFields = [
+    'title', 'description', 'start_date', 'end_date', 'currency', 'reminder_days', 'day_count', 'is_rowing_trip', 'default_route_leg_kind',
+    'rowing_speed_kmh', 'rowing_lock_delay_min',
+  ];
   if (editFields.some(f => req.body[f] !== undefined)) {
     if (!checkPermission('trip_edit', authReq.user.role, tripOwnerId, authReq.user.id, isMember))
       return res.status(403).json({ error: 'No permission to edit this trip' });

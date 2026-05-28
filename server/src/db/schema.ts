@@ -61,6 +61,10 @@ function createTables(db: Database.Database): void {
       cover_image TEXT,
       is_archived INTEGER DEFAULT 0,
       reminder_days INTEGER DEFAULT 3,
+      is_rowing_trip INTEGER DEFAULT 0,
+      default_route_leg_kind TEXT DEFAULT 'walking',
+      rowing_speed_kmh REAL DEFAULT 6,
+      rowing_lock_delay_min INTEGER DEFAULT 15,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -134,6 +138,7 @@ function createTables(db: Database.Database): void {
       reservation_status TEXT DEFAULT 'none',
       reservation_notes TEXT,
       reservation_datetime TEXT,
+      route_leg_override TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 

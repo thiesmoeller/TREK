@@ -34,6 +34,11 @@ export interface Trip {
   cover_image?: string | null;
   is_archived: number;
   reminder_days: number;
+  /** Default routing for each leg from a stop to the next: waterway (rowing / OSM graph) or OSRM profiles */
+  default_route_leg_kind?: string | null;
+  is_rowing_trip?: number | boolean | null;
+  rowing_speed_kmh?: number | null;
+  rowing_lock_delay_min?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -103,6 +108,8 @@ export interface DayAssignment {
   reservation_datetime?: string | null;
   assignment_time?: string | null;
   assignment_end_time?: string | null;
+  /** travel mode from this stop to the next geocoded stop (null = use trip default) */
+  route_leg_override?: string | null;
   created_at?: string;
 }
 

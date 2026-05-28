@@ -71,7 +71,9 @@ interface GooglePlaceDetails extends GooglePlaceResult {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const UA = 'TREK Travel Planner (https://github.com/mauriceboe/TREK)';
+/** User-Agent for OpenStreetMap community APIs (Nominatim, Overpass). */
+export const OSM_API_UA = 'TREK Travel Planner (https://github.com/mauriceboe/TREK)';
+const UA = OSM_API_UA;
 
 // ── Photo cache (disk-backed) ────────────────────────────────────────────────
 import * as placePhotoCache from './placePhotoCache';
@@ -187,6 +189,22 @@ export async function fetchOverpassDetails(osmType: string, osmId: string): Prom
     const data = await res.json() as { elements?: OverpassElement[] };
     return data.elements?.[0] || null;
   } catch { return null; }
+}
+
+/** Raw Overpass JSON interpreter request (caller supplies full QL query with timeout). */
+export async function fetchOverpassInterpreter(query: string, timeoutSec = 25): Promise<{ elements?: unknown[] } | null> {
+  const q = query.includes('[timeout:') ? query : `[out:json][timeout:${timeoutSec}];\n${query}`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(q)}`,
+    });
+    if (!res.ok) return null;
+    return await res.json() as { elements?: unknown[] };
+  } catch {
+    return null;
+  }
 }
 
 // ── Opening hours parsing ────────────────────────────────────────────────────

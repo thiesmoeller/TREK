@@ -8,6 +8,7 @@ import { listItems as listPackingItems } from './packingService';
 import { listReservations } from './reservationService';
 import { listNotes as listCollabNotes } from './collabService';
 import { shiftOwnerEntriesForTripWindow } from './vacayService';
+import { normalizeRouteLegKind, DEFAULT_ROUTE_LEG_KIND } from './routeLegKinds';
 
 export const MS_PER_DAY = 86400000;
 export const MAX_TRIP_DAYS = 365;
@@ -165,6 +166,10 @@ interface CreateTripData {
   currency?: string;
   reminder_days?: number;
   day_count?: number;
+  is_rowing_trip?: boolean | number | null;
+  default_route_leg_kind?: string | null;
+  rowing_speed_kmh?: number | null;
+  rowing_lock_delay_min?: number | null;
 }
 
 export function createTrip(userId: number, data: CreateTripData, maxDays?: number) {
@@ -172,10 +177,24 @@ export function createTrip(userId: number, data: CreateTripData, maxDays?: numbe
     ? (Number(data.reminder_days) >= 0 && Number(data.reminder_days) <= 30 ? Number(data.reminder_days) : 3)
     : 3;
 
+  const requestedRouteDefault = normalizeRouteLegKind(data.default_route_leg_kind ?? DEFAULT_ROUTE_LEG_KIND);
+  const isRowingTrip = data.is_rowing_trip !== undefined ? (data.is_rowing_trip ? 1 : 0) : (requestedRouteDefault === 'waterway' ? 1 : 0);
+  const routeDefault = isRowingTrip || requestedRouteDefault !== 'waterway' ? requestedRouteDefault : DEFAULT_ROUTE_LEG_KIND;
+  const rowingSpeedKmh = data.rowing_speed_kmh != null && Number(data.rowing_speed_kmh) > 0 ? Number(data.rowing_speed_kmh) : 6;
+  const rowingLockDelayMin = data.rowing_lock_delay_min != null && Number(data.rowing_lock_delay_min) >= 0
+    ? Number(data.rowing_lock_delay_min)
+    : Number(process.env.TREK_LOCK_DELAY_MIN ?? 15);
+
   const result = db.prepare(`
-    INSERT INTO trips (user_id, title, description, start_date, end_date, currency, reminder_days)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(userId, data.title, data.description || null, data.start_date || null, data.end_date || null, data.currency || 'EUR', rd);
+    INSERT INTO trips (
+      user_id, title, description, start_date, end_date, currency, reminder_days, is_rowing_trip, default_route_leg_kind,
+      rowing_speed_kmh, rowing_lock_delay_min
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId, data.title, data.description || null, data.start_date || null, data.end_date || null,
+    data.currency || 'EUR', rd, isRowingTrip, routeDefault, rowingSpeedKmh, rowingLockDelayMin,
+  );
 
   const tripId = result.lastInsertRowid;
   generateDays(tripId, data.start_date || null, data.end_date || null, maxDays, data.day_count);
@@ -202,6 +221,10 @@ interface UpdateTripData {
   cover_image?: string;
   reminder_days?: number;
   day_count?: number;
+  is_rowing_trip?: boolean | number | null;
+  default_route_leg_kind?: string | null;
+  rowing_speed_kmh?: number | null;
+  rowing_lock_delay_min?: number | null;
 }
 
 export interface UpdateTripResult {
@@ -218,7 +241,7 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
   const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as Trip & { reminder_days?: number } | undefined;
   if (!trip) throw new NotFoundError('Trip not found');
 
-  const { title, description, start_date, end_date, currency, is_archived, cover_image, reminder_days } = data;
+  const { title, description, start_date, end_date, currency, is_archived, cover_image, reminder_days, default_route_leg_kind } = data;
 
   if (start_date && end_date && new Date(end_date) < new Date(start_date))
     throw new ValidationError('End date must be after start date');
@@ -235,11 +258,29 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
     ? (Number(reminder_days) >= 0 && Number(reminder_days) <= 30 ? Number(reminder_days) : oldReminder)
     : oldReminder;
 
+  const prevRouteDefault = normalizeRouteLegKind((trip as any).default_route_leg_kind ?? DEFAULT_ROUTE_LEG_KIND);
+  const requestedRouteDefault = default_route_leg_kind !== undefined
+    ? normalizeRouteLegKind(default_route_leg_kind)
+    : prevRouteDefault;
+  const isRowingTrip = data.is_rowing_trip !== undefined ? (data.is_rowing_trip ? 1 : 0) : ((trip as any).is_rowing_trip || requestedRouteDefault === 'waterway' ? 1 : 0);
+  const newRouteDefault = isRowingTrip || requestedRouteDefault !== 'waterway' ? requestedRouteDefault : DEFAULT_ROUTE_LEG_KIND;
+  const rowingSpeedKmh = data.rowing_speed_kmh !== undefined
+    ? (data.rowing_speed_kmh != null && Number(data.rowing_speed_kmh) > 0 ? Number(data.rowing_speed_kmh) : ((trip as any).rowing_speed_kmh ?? 6))
+    : ((trip as any).rowing_speed_kmh ?? 6);
+  const rowingLockDelayMin = data.rowing_lock_delay_min !== undefined
+    ? (data.rowing_lock_delay_min != null && Number(data.rowing_lock_delay_min) >= 0 ? Number(data.rowing_lock_delay_min) : ((trip as any).rowing_lock_delay_min ?? 15))
+    : ((trip as any).rowing_lock_delay_min ?? 15);
+
   db.prepare(`
     UPDATE trips SET title=?, description=?, start_date=?, end_date=?,
-      currency=?, is_archived=?, cover_image=?, reminder_days=?, updated_at=CURRENT_TIMESTAMP
+      currency=?, is_archived=?, cover_image=?, reminder_days=?, is_rowing_trip=?, default_route_leg_kind=?,
+      rowing_speed_kmh=?, rowing_lock_delay_min=?,
+      updated_at=CURRENT_TIMESTAMP
     WHERE id=?
-  `).run(newTitle, newDesc, newStart || null, newEnd || null, newCurrency, newArchived, newCover, newReminder, tripId);
+  `).run(
+    newTitle, newDesc, newStart || null, newEnd || null, newCurrency, newArchived, newCover, newReminder, isRowingTrip, newRouteDefault,
+    rowingSpeedKmh, rowingLockDelayMin, tripId,
+  );
 
   if (trip.start_date && trip.end_date && newStart && newStart !== trip.start_date)
     shiftOwnerEntriesForTripWindow(trip.user_id, trip.start_date, trip.end_date, newStart);
@@ -561,9 +602,16 @@ export function copyTripById(sourceTripId: string | number, newOwnerId: number, 
 
   const fn = db.transaction(() => {
     const tripResult = db.prepare(`
-      INSERT INTO trips (user_id, title, description, start_date, end_date, currency, cover_image, is_archived, reminder_days)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-    `).run(newOwnerId, newTitle, src.description, src.start_date, src.end_date, src.currency, src.cover_image, src.reminder_days ?? 3);
+      INSERT INTO trips (
+        user_id, title, description, start_date, end_date, currency, cover_image, is_archived, reminder_days, is_rowing_trip, default_route_leg_kind,
+        rowing_speed_kmh, rowing_lock_delay_min
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+    `).run(
+      newOwnerId, newTitle, src.description, src.start_date, src.end_date, src.currency, src.cover_image,
+      src.reminder_days ?? 3, src.is_rowing_trip ? 1 : 0, normalizeRouteLegKind((src as any).default_route_leg_kind ?? DEFAULT_ROUTE_LEG_KIND),
+      src.rowing_speed_kmh ?? 6, src.rowing_lock_delay_min ?? 15,
+    );
     const newTripId = tripResult.lastInsertRowid;
 
     const oldDays = db.prepare('SELECT * FROM days WHERE trip_id = ? ORDER BY day_number').all(sourceTripId) as any[];
@@ -604,8 +652,8 @@ export function copyTripById(sourceTripId: string | number, newOwnerId: number, 
     `).all(sourceTripId) as any[];
     const assignmentMap = new Map<number, number | bigint>();
     const insertAssignment = db.prepare(`
-      INSERT INTO day_assignments (day_id, place_id, order_index, notes, reservation_status, reservation_notes, reservation_datetime, assignment_time, assignment_end_time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO day_assignments (day_id, place_id, order_index, notes, reservation_status, reservation_notes, reservation_datetime, assignment_time, assignment_end_time, route_leg_override)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const a of oldAssignments) {
       const newDayId = dayMap.get(a.day_id);
@@ -613,7 +661,7 @@ export function copyTripById(sourceTripId: string | number, newOwnerId: number, 
       if (newDayId && newPlaceId) {
         const r = insertAssignment.run(newDayId, newPlaceId, a.order_index, a.notes,
           a.reservation_status, a.reservation_notes, a.reservation_datetime,
-          a.assignment_time, a.assignment_end_time);
+          a.assignment_time, a.assignment_end_time, a.route_leg_override ?? null);
         assignmentMap.set(a.id, r.lastInsertRowid);
       }
     }

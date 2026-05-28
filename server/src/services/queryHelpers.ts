@@ -59,6 +59,7 @@ function formatAssignmentWithPlace(a: AssignmentRow, tags: Partial<Tag>[], parti
     place_id: a.place_id,
     order_index: a.order_index,
     notes: a.notes,
+    route_leg_override: a.route_leg_override ?? null,
     assignment_time: a.assignment_time ?? null,
     assignment_end_time: a.assignment_end_time ?? null,
     participants: participants || [],

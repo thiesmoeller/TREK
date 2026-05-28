@@ -5,6 +5,8 @@ import { broadcast } from '../websocket';
 import { checkPermission } from '../services/permissions';
 import { AuthRequest } from '../types';
 import * as dayService from '../services/dayService';
+import { computeMixedDayRoute } from '../services/mixedDayRouteService';
+import { dayExists as assignmentDayTripExists } from '../services/assignmentService';
 
 const router = express.Router({ mergeParams: true });
 
@@ -24,6 +26,24 @@ router.post('/', authenticate, requireTripAccess, (req: Request, res: Response) 
   const day = dayService.createDay(tripId, date, notes);
   res.status(201).json({ day });
   broadcast(tripId, 'day:created', { day }, req.headers['x-socket-id'] as string);
+});
+
+router.post('/:id/route-geometry', authenticate, requireTripAccess, async (req: Request, res: Response) => {
+  void req.body;
+  const { tripId, id } = req.params;
+  if (!assignmentDayTripExists(id, tripId)) return res.status(404).json({ error: 'Day not found' });
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 72000);
+  try {
+    const result = await computeMixedDayRoute(Number(tripId), Number(id), { signal: controller.signal });
+    clearTimeout(t);
+    return res.json(result);
+  } catch (e: unknown) {
+    clearTimeout(t);
+    const msg = e instanceof Error ? e.message : 'route_geometry_failed';
+    const code = msg === 'trip_not_found' || msg === 'day_not_found' ? 404 : 500;
+    return res.status(code).json({ error: msg });
+  }
 });
 
 router.put('/:id', authenticate, requireTripAccess, (req: Request, res: Response) => {

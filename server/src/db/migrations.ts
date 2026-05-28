@@ -2265,6 +2265,20 @@ function runMigrations(db: Database.Database): void {
         if (!err.message?.includes('no such table')) throw err;
       }
     },
+    // Rowing trips v1: default route mode, per-assignment override, speed and lock-delay settings
+    () => {
+      try { db.exec('ALTER TABLE trips ADD COLUMN is_rowing_trip INTEGER DEFAULT 0'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec("ALTER TABLE trips ADD COLUMN default_route_leg_kind TEXT DEFAULT 'walking'"); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec("UPDATE trips SET is_rowing_trip = 1 WHERE default_route_leg_kind = 'waterway'"); } catch (err: any) { if (!err.message?.includes('no such column')) throw err; }
+      try { db.exec('ALTER TABLE day_assignments ADD COLUMN route_leg_override TEXT'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE trips ADD COLUMN rowing_speed_kmh REAL DEFAULT 6'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec('ALTER TABLE trips ADD COLUMN rowing_lock_delay_min INTEGER DEFAULT 15'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+    },
+    // Rowing trips v2: gate rowing controls behind a per-trip feature flag
+    () => {
+      try { db.exec('ALTER TABLE trips ADD COLUMN is_rowing_trip INTEGER DEFAULT 0'); } catch (err: any) { if (!err.message?.includes('duplicate column name')) throw err; }
+      try { db.exec("UPDATE trips SET is_rowing_trip = 1 WHERE default_route_leg_kind = 'waterway'"); } catch (err: any) { if (!err.message?.includes('no such column')) throw err; }
+    },
   ];
 
   if (currentVersion < migrations.length) {

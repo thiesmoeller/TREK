@@ -17,9 +17,11 @@ import {
   getParticipants,
   updateTime,
   setParticipants,
+  updateRouteLegOverride,
 } from '../services/assignmentService';
 import { onPlaceCreated } from '../services/journeyService';
 import { AuthRequest } from '../types';
+import { ROUTE_LEG_KINDS } from '../services/routeLegKinds';
 
 const router = express.Router({ mergeParams: true });
 
@@ -61,6 +63,28 @@ router.delete('/trips/:tripId/days/:dayId/assignments/:id', authenticate, requir
   deleteAssignment(id);
   res.json({ success: true });
   broadcast(tripId, 'assignment:deleted', { assignmentId: Number(id), dayId: Number(dayId) }, req.headers['x-socket-id'] as string);
+});
+
+router.put('/trips/:tripId/days/:dayId/assignments/:assignmentId/route-leg', authenticate, requireTripAccess, (req: Request, res: Response) => {
+  const authReq = req as AuthRequest;
+  if (!checkPermission('day_edit', authReq.user.role, authReq.trip!.user_id, authReq.user.id, authReq.trip!.user_id !== authReq.user.id))
+    return res.status(403).json({ error: 'No permission' });
+
+  const { tripId, dayId, assignmentId } = req.params;
+
+  if (!('route_leg_override' in req.body)) return res.status(400).json({ error: 'route_leg_override required' });
+
+  const v = req.body.route_leg_override;
+  let stored: string | null;
+  if (v === null || v === '' || v === 'inherit') stored = null;
+  else if (typeof v !== 'string' || !(ROUTE_LEG_KINDS as readonly string[]).includes(v.trim().toLowerCase())) {
+    return res.status(400).json({ error: 'Invalid route_leg_override' });
+  } else stored = v.trim().toLowerCase();
+
+  const updated = updateRouteLegOverride(assignmentId, dayId, tripId, stored);
+  if (!updated) return res.status(404).json({ error: 'Assignment not found' });
+  res.json({ assignment: updated });
+  broadcast(tripId, 'assignment:updated', { assignment: updated }, req.headers['x-socket-id'] as string);
 });
 
 router.put('/trips/:tripId/days/:dayId/assignments/reorder', authenticate, requireTripAccess, (req: Request, res: Response) => {

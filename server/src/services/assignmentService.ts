@@ -38,6 +38,7 @@ export function getAssignmentWithPlace(assignmentId: number | bigint) {
     place_id: a.place_id,
     order_index: a.order_index,
     notes: a.notes,
+    route_leg_override: a.route_leg_override ?? null,
     assignment_time: a.assignment_time ?? null,
     assignment_end_time: a.assignment_end_time ?? null,
     participants,
@@ -212,4 +213,15 @@ export function setParticipants(assignmentId: string | number, userIds: number[]
     JOIN users u ON ap.user_id = u.id
     WHERE ap.assignment_id = ?
   `).all(assignmentId);
+}
+
+export function updateRouteLegOverride(
+  assignmentId: string | number,
+  dayId: string | number,
+  tripId: string | number,
+  route_leg_override: string | null,
+) {
+  if (!assignmentExistsInDay(assignmentId, dayId, tripId)) return null;
+  db.prepare('UPDATE day_assignments SET route_leg_override = ? WHERE id = ?').run(route_leg_override, assignmentId);
+  return getAssignmentWithPlace(Number(assignmentId));
 }
