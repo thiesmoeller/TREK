@@ -84,6 +84,13 @@ const dashboard: TranslationStrings = {
     'How many days to plan for when no travel dates are set.',
   'dashboard.noDateHint':
     'No date set — 7 default days will be created. You can change this anytime.',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Row on waterways',
+  'dashboard.rowingTrip': 'Rowing trip',
+  'dashboard.rowingTripHint': 'Enable waterway routing and rowing leg overrides for this trip.',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
   'dashboard.coverImage': 'Cover Image',
   'dashboard.addCoverImage': 'Add cover image (or drag & drop)',
   'dashboard.addMembers': 'Travel buddies',

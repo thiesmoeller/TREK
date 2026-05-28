@@ -18,5 +18,12 @@ const inspector: TranslationStrings = {
   'inspector.editRes': 'Modifier la réservation',
   'inspector.participants': 'Participants',
   'inspector.trackStats': 'Données du parcours',
+  'inspector.routeLegLabel': 'Route from this stop to the next',
+  'inspector.routeLegInheritHelp': '"Trip default" uses the mode set on the trip form (rowing by waterway, walking, or driving).',
+  'inspector.routeLegRouteCalcHint': 'Turn on route calculation in Settings -> Map to draw waterways and roads on the map.',
+  'inspector.routeLegInherit': 'Trip default',
+  'inspector.routeLegWaterway': 'Row by waterway',
+  'inspector.routeLegWalking': 'Walk',
+  'inspector.routeLegDriving': 'Drive',
 };
 export default inspector;

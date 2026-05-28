@@ -162,5 +162,9 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.swapCurrencies': '통화 바꾸기',
   'dashboard.aria.addTimezone': '시간대 추가',
   'dashboard.aria.removeTimezone': '{city} 제거',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Row on waterways',
+  'dashboard.routeLegDefaultHint': 'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

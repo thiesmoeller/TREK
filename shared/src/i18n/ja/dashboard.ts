@@ -162,5 +162,9 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.swapCurrencies': '通貨を入れ替え',
   'dashboard.aria.addTimezone': 'タイムゾーンを追加',
   'dashboard.aria.removeTimezone': '{city}を削除',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Row on waterways',
+  'dashboard.routeLegDefaultHint': 'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

@@ -163,5 +163,9 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.swapCurrencies': 'Valuta\'s omwisselen',
   'dashboard.aria.addTimezone': 'Tijdzone toevoegen',
   'dashboard.aria.removeTimezone': '{city} verwijderen',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Row on waterways',
+  'dashboard.routeLegDefaultHint': 'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

@@ -4,5 +4,14 @@ const map: TranslationStrings = {
   'map.connections': '连接',
   'map.showConnections': '显示预订路线',
   'map.hideConnections': '隐藏预订路线',
+  'map.route.distanceDuration': '{distance} · {duration}',
+  'map.route.lockDelay': '+{delay} locks',
+  'map.route.fallbackRowing': '{distance} · {duration} ({speed} km/h rowing, fallback)',
+  'map.route.gearShuttle': '{distance} · {duration} (gear shuttle)',
+  'map.waterway.contextTitle': 'Waterway context',
+  'map.waterway.tideDetected': 'detected',
+  'map.waterway.unavailable': 'unavailable',
+  'map.lock.title': 'Lock',
+  'map.lock.alongRoute': '{km} km along route · +{delay}',
 };
 export default map;

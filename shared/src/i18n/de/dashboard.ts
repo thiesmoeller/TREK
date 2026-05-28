@@ -71,6 +71,13 @@ const dashboard: TranslationStrings = {
     'Wie viele Tage geplant werden sollen, wenn kein Reisezeitraum gesetzt ist.',
   'dashboard.noDateHint':
     'Kein Datum gesetzt — es werden 7 Standardtage erstellt. Du kannst das jederzeit ändern.',
+  'dashboard.routeLegDefaultWalking': 'Zu Fuß (OSRM Fuß)',
+  'dashboard.routeLegDefaultDriving': 'Mit dem Auto (OSRM Auto)',
+  'dashboard.routeLegDefaultWaterway': 'Auf dem Wasser rudern',
+  'dashboard.rowingTrip': 'Ruderreise',
+  'dashboard.rowingTripHint': 'Aktiviert Wasser-Routing und Ruder-Overrides für diese Reise.',
+  'dashboard.routeLegDefaultHint':
+    'Gilt zwischen jedem Stop und dem nächsten, wenn du dort keinen anderen Modus einstellst.',
   'dashboard.coverImage': 'Titelbild',
   'dashboard.addCoverImage': 'Titelbild hinzufügen (oder per Drag & Drop)',
   'dashboard.addMembers': 'Reisebegleiter',
