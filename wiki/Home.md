@@ -11,7 +11,7 @@ TREK is a self-hosted, real-time collaborative travel planner licensed under AGP
 - **Interactive Map** — Leaflet map with photo markers, clustering, route visualization, and customizable tile sources
 - **Place Search** — Google Places (photos, ratings, hours) or OpenStreetMap (free, no API key needed)
 - **Day Notes** — timestamped, icon-tagged notes per day
-- **Route Optimization** — auto-optimize place order and export to Google Maps
+- **Route Optimization** — auto-optimize place order, plan rowing legs on waterways, show luggage-bus routes between accommodations, and export to Google Maps
 - **Weather Forecasts** — 16-day forecasts via Open-Meteo (no API key required), historical climate averages as fallback
 
 ### Travel Management

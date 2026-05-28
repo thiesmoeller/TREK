@@ -32,6 +32,7 @@
 - [[Day Plans and Notes|Day-Plans-and-Notes]]
 - [[Map Features|Map-Features]]
 - [[Route Optimization|Route-Optimization]]
+- [[Rowing Trips and Luggage Bus|Rowing-Trips-and-Luggage-Bus]]
 - [[Weather Forecasts|Weather-Forecasts]]
 
 ## Travel Management
