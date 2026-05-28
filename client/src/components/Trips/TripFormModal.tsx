@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Modal from '../shared/Modal'
-import { Calendar, Camera, X, Clipboard, UserPlus, Bell } from 'lucide-react'
+import { Calendar, Camera, X, Clipboard, UserPlus, Bell, Waves } from 'lucide-react'
 import { tripsApi, authApi } from '../../api/client'
 import CustomSelect from '../shared/CustomSelect'
 import { useAuthStore } from '../../store/authStore'
@@ -37,6 +37,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     end_date: '',
     reminder_days: 0 as number,
     day_count: 7,
+    is_rowing_trip: false,
+    default_route_leg_kind: 'walking' as 'waterway' | 'walking' | 'driving',
   })
   const [customReminder, setCustomReminder] = useState(false)
   const [error, setError] = useState('')
@@ -59,11 +61,15 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         end_date: trip.end_date || '',
         reminder_days: rd,
         day_count: trip.day_count || 7,
+        is_rowing_trip: trip.is_rowing_trip === true || trip.is_rowing_trip === 1 || trip.default_route_leg_kind === 'waterway',
+        default_route_leg_kind: (['waterway', 'walking', 'driving'].includes(String(trip.default_route_leg_kind))
+          ? (trip.default_route_leg_kind as 'waterway' | 'walking' | 'driving')
+          : 'walking'),
       })
       setCustomReminder(![0, 1, 3, 9].includes(rd))
       setCoverPreview(trip.cover_image || null)
     } else {
-      setFormData({ title: '', description: '', start_date: '', end_date: '', reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7 })
+      setFormData({ title: '', description: '', start_date: '', end_date: '', reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7, is_rowing_trip: false, default_route_leg_kind: 'walking' })
       setCustomReminder(false)
       setCoverPreview(null)
     }
@@ -104,6 +110,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         reminder_days: formData.reminder_days,
+        is_rowing_trip: formData.is_rowing_trip ? 1 : 0,
+        default_route_leg_kind: formData.default_route_leg_kind,
         ...(!formData.start_date && !formData.end_date ? { day_count: formData.day_count } : {}),
       })
       // Add selected members for newly created trips
@@ -200,6 +208,9 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
 
   const update = (field, value) => setFormData(prev => {
     const next = { ...prev, [field]: value }
+    if (field === 'is_rowing_trip' && !value && prev.default_route_leg_kind === 'waterway') {
+      next.default_route_leg_kind = 'walking'
+    }
     if (field === 'start_date' && value) {
       if (!prev.end_date || prev.end_date < value) {
         next.end_date = value
@@ -287,6 +298,50 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
           <textarea value={formData.description} onChange={e => canEditTrip && update('description', e.target.value)}
             readOnly={!canEditTrip} placeholder={t('dashboard.tripDescriptionPlaceholder')} rows={3}
             className={`${inputCls} resize-none`} />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={formData.is_rowing_trip}
+              disabled={!canEditTrip}
+              onChange={e => update('is_rowing_trip', e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
+            />
+            <Waves className="w-4 h-4 text-slate-400" />
+            {t('dashboard.rowingTrip')}
+          </label>
+          {canEditTrip && (
+            <p className="text-xs text-slate-400 mt-1.5">{t('dashboard.rowingTripHint')}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.defaultRouteLegKind')}</label>
+          {canEditTrip ? (
+            <CustomSelect
+              value={formData.default_route_leg_kind}
+              onChange={v => update('default_route_leg_kind', v as typeof formData.default_route_leg_kind)}
+              options={[
+                { value: 'walking', label: t('dashboard.routeLegDefaultWalking') },
+                { value: 'driving', label: t('dashboard.routeLegDefaultDriving') },
+                ...(formData.is_rowing_trip ? [{ value: 'waterway', label: t('dashboard.routeLegDefaultWaterway') }] : []),
+              ]}
+              size="sm"
+            />
+          ) : (
+            <p className="text-sm text-slate-600">
+              {formData.default_route_leg_kind === 'walking'
+                ? t('dashboard.routeLegDefaultWalking')
+                : formData.default_route_leg_kind === 'driving'
+                  ? t('dashboard.routeLegDefaultDriving')
+                  : t('dashboard.routeLegDefaultWaterway')}
+            </p>
+          )}
+          {canEditTrip && (
+            <p className="text-xs text-slate-400 mt-1.5">{t('dashboard.routeLegDefaultHint')}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">

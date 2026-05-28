@@ -3,10 +3,11 @@ import { openFile } from '../../utils/fileDownload'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
-import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
+import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp, Waves } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
-import { mapsApi } from '../../api/client'
+import { mapsApi, assignmentsApi } from '../../api/client'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useTripStore } from '../../store/tripStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useTranslation } from '../../i18n'
 import type { Place, Category, Day, Assignment, Reservation, TripFile, AssignmentsMap } from '../../types'
@@ -127,16 +128,23 @@ interface PlaceInspectorProps {
   onUpdatePlace: (placeId: number, data: Partial<Place>) => void
   leftWidth?: number
   rightWidth?: number
+  /** When set with `canEditRouteLeg`, user can override how the leg *from this stop to the next* is routed. */
+  tripId?: number | null
+  canEditRouteLeg?: boolean
+  isRowingTrip?: boolean
 }
 
 export default function PlaceInspector({
   place, categories, days, selectedDayId, selectedAssignmentId, assignments, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files, onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
-  leftWidth = 0, rightWidth = 0,
+  leftWidth = 0, rightWidth = 0, tripId = null, canEditRouteLeg = false,
+  isRowingTrip = false,
 }: PlaceInspectorProps) {
   const { t, locale, language } = useTranslation()
   const timeFormat = useSettingsStore(s => s.settings.time_format) || '24h'
+  const routeCalcOn = useSettingsStore(s => s.settings.route_calculation) !== false
+  const [routeLegSaving, setRouteLegSaving] = useState(false)
   const [hoursExpanded, setHoursExpanded] = useState(false)
   const [filesExpanded, setFilesExpanded] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -356,6 +364,58 @@ export default function PlaceInspector({
           {place.notes && (
             <div className="collab-note-md" style={{ background: 'var(--bg-hover)', borderRadius: 10, overflow: 'hidden', fontSize: 12, color: 'var(--text-muted)', lineHeight: '1.5', padding: '8px 12px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
               <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{place.notes}</Markdown>
+            </div>
+          )}
+
+          {tripId != null && canEditRouteLeg && selectedDayId != null && assignmentInDay && (
+            <div style={{ background: 'var(--bg-hover)', borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Waves size={13} color="#9ca3af" />
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>{t('inspector.routeLegLabel')}</span>
+              </div>
+              <p style={{ fontSize: 10, color: 'var(--text-faint)', margin: 0, lineHeight: 1.35 }}>{t('inspector.routeLegInheritHelp')}</p>
+              {!routeCalcOn && (
+                <p style={{ fontSize: 10, color: 'var(--text-faint)', margin: 0, lineHeight: 1.35 }}>{t('inspector.routeLegRouteCalcHint')}</p>
+              )}
+              <select
+                disabled={routeLegSaving}
+                value={assignmentInDay.route_leg_override == null ? 'inherit' : (assignmentInDay.route_leg_override as string)}
+                onChange={async (e) => {
+                  const raw = e.target.value
+                  const route_leg_override = raw === 'inherit' ? null : raw as NonNullable<Assignment['route_leg_override']>
+                  setRouteLegSaving(true)
+                  try {
+                    const { assignment } = await assignmentsApi.updateRouteLeg(tripId, selectedDayId, assignmentInDay.id, { route_leg_override })
+                    useTripStore.setState(state => ({
+                      assignments: {
+                        ...state.assignments,
+                        [String(selectedDayId)]: (state.assignments[String(selectedDayId)] || []).map(a =>
+                          a.id === assignment.id ? { ...a, ...assignment } : a
+                        ),
+                      },
+                    }))
+                  } catch {
+                    /** keep previous selection — server rejected */
+                  } finally {
+                    setRouteLegSaving(false)
+                  }
+                }}
+                style={{
+                  fontSize: 12,
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-primary)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  cursor: routeLegSaving ? 'wait' : 'pointer',
+                }}
+              >
+                <option value="inherit">{t('inspector.routeLegInherit')}</option>
+                {isRowingTrip && <option value="waterway">{t('inspector.routeLegWaterway')}</option>}
+                <option value="walking">{t('inspector.routeLegWalking')}</option>
+                <option value="driving">{t('inspector.routeLegDriving')}</option>
+              </select>
             </div>
           )}
 

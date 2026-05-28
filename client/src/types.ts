@@ -17,12 +17,20 @@ export interface User {
 export interface Trip {
   id: number
   name: string
+  title?: string
   description: string | null
   start_date: string
   end_date: string
   cover_url: string | null
+  cover_image?: string | null
   is_archived: boolean
   reminder_days: number
+  day_count?: number
+  /** Default leg mode: waterway (rowing) graph or OSRM walking/driving */
+  default_route_leg_kind?: 'waterway' | 'walking' | 'driving' | string | null
+  is_rowing_trip?: boolean | number | null
+  rowing_speed_kmh?: number | null
+  rowing_lock_delay_min?: number | null
   owner_id: number
   created_at: string
   updated_at: string
@@ -71,6 +79,7 @@ export interface Assignment {
   place_id?: number
   order_index: number
   notes: string | null
+  route_leg_override?: 'waterway' | 'walking' | 'driving' | null
   place: Place
 }
 
@@ -175,7 +184,7 @@ export interface Reservation {
   accommodation_start_day_id?: number | null
   accommodation_end_day_id?: number | null
   day_plan_position?: number | null
-  day_positions?: Record<number, number> | null
+  day_positions?: Record<string, number> | Record<number, number> | null
   metadata?: Record<string, string> | string | null
   needs_review?: number
   endpoints?: ReservationEndpoint[]
@@ -215,6 +224,7 @@ export interface Settings {
   temperature_unit: string
   time_format: string
   show_place_description: boolean
+  route_calculation?: boolean
   blur_booking_codes?: boolean
   map_booking_labels?: boolean
   map_provider?: 'leaflet' | 'mapbox-gl'
@@ -236,19 +246,71 @@ export interface RouteSegment {
   mid: [number, number]
   from: [number, number]
   to: [number, number]
-  distance: number
-  duration: number
   walkingText: string
   drivingText: string
-  distanceText: string
-  durationText?: string
+  /** Index into the `route` polyline array when multiple transport-split segments exist */
+  polylineIndex?: number
+  /** Waterway / rowing summary pill (when set, map shows a single label) */
+  rowingText?: string | null
+  /** @deprecated use rowingText; retained for older cached API payloads */
+  paddleText?: string | null
+  legKind?: 'waterway' | 'walking' | 'driving'
+  distanceM?: number
+  durationS?: number
+  lockDelayS?: number
+  lockCount?: number
+  isFallback?: boolean
+  waterwayContext?: WaterwayContext
 }
 
-export interface RouteWithLegs {
-  coordinates: [number, number][]
-  distance: number
-  duration: number
-  legs: RouteSegment[]
+export interface GearRouteSegment {
+  mid: [number, number]
+  polylineIndex: number
+  distanceM: number
+  durationS: number
+  pillText: string
+}
+
+export interface WaterwayLockAnnotation {
+  id: string
+  osmType: string
+  osmId: number
+  name: string | null
+  ref: string | null
+  lat: number
+  lng: number
+  chainageM: number
+  delayS: number
+  tags: {
+    opening_hours?: string
+    phone?: string
+    website?: string
+    vhf?: string
+  }
+}
+
+export interface WaterwayConditionObservation {
+  provider: string
+  label: string
+  type: 'water_level' | 'discharge' | 'current' | 'tide'
+  value: number | null
+  unit: string | null
+  observedAt: string | null
+  stationName?: string | null
+  distanceM?: number | null
+  currentSpeedMps?: number | null
+  currentDirectionDeg?: number | null
+  modelBased?: boolean
+}
+
+export interface WaterwayContext {
+  baseRowingDurationS: number
+  adjustedRowingDurationS: number
+  lockDelayS: number
+  flowAdjustmentS: number
+  locks: WaterwayLockAnnotation[]
+  conditions: WaterwayConditionObservation[]
+  warnings: string[]
 }
 
 export interface RouteResult {
@@ -277,6 +339,12 @@ export interface Accommodation {
   trip_id: number
   name: string
   address: string | null
+  place_id?: number | null
+  start_day_id?: number
+  end_day_id?: number
+  place_lat?: number | null
+  place_lng?: number | null
+  place_name?: string | null
   check_in: string | null
   check_in_end: string | null
   check_out: string | null

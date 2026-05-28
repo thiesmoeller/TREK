@@ -4,12 +4,12 @@ declare global { interface Window { __dragData: DragDataPayload | null } }
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
 import ReactDOM from 'react-dom'
-import { ChevronDown, ChevronRight, ChevronUp, ChevronsDownUp, ChevronsUpDown, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock, Hotel, Utensils, Users, Undo2, X, Footprints, Route as RouteIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ChevronsDownUp, ChevronsUpDown, Navigation, RotateCcw, ExternalLink, Clock, Pencil, GripVertical, Ticket, Plus, FileText, Check, Trash2, Info, MapPin, Star, Heart, Camera, Lightbulb, Flag, Bookmark, Train, Bus, Plane, Car, Ship, Coffee, ShoppingBag, AlertTriangle, FileDown, Lock, Hotel, Utensils, Users, Undo2, X, Footprints, Waves, Route as RouteIcon } from 'lucide-react'
 
 const RES_ICONS = { flight: Plane, hotel: Hotel, restaurant: Utensils, train: Train, car: Car, cruise: Ship, event: Ticket, tour: Users, other: FileText }
 import { assignmentsApi, reservationsApi } from '../../api/client'
 import { downloadTripPDF } from '../PDF/TripPDF'
-import { calculateRoute, calculateRouteWithLegs, optimizeRoute } from '../Map/RouteCalculator'
+import { calculateRoute, optimizeRoute } from '../Map/RouteCalculator'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { useContextMenu, ContextMenu } from '../shared/ContextMenu'
 import Markdown from 'react-markdown'
@@ -185,9 +185,8 @@ interface DayPlanSidebarProps {
   onAddReservation: () => void
   onNavigateToFiles?: () => void
   routeShown?: boolean
-  routeProfile?: 'driving' | 'walking'
+  routeSegments?: RouteSegment[]
   onToggleRoute?: () => void
-  onSetRouteProfile?: (profile: 'driving' | 'walking') => void
   onAddPlace?: () => void
   onAddPlaceToDay?: (placeId: number, dayId: number) => void
   onExpandedDaysChange?: (expandedDayIds: Set<number>) => void
@@ -205,18 +204,26 @@ interface DayPlanSidebarProps {
 }
 
 /** Slim travel-time connector shown between two consecutive located stops in a day. */
-function RouteConnector({ seg, profile }: { seg: RouteSegment; profile: 'driving' | 'walking' }) {
-  const driving = profile === 'driving'
-  const Icon = driving ? Car : Footprints
+function formatSegmentDistance(seg: RouteSegment): string {
+  const anySeg = seg as RouteSegment & { distanceText?: string }
+  if (anySeg.distanceText) return anySeg.distanceText
+  if (typeof seg.distanceM !== 'number') return ''
+  return seg.distanceM < 1000 ? `${Math.round(seg.distanceM)} m` : `${(seg.distanceM / 1000).toFixed(1)} km`
+}
+
+function RouteConnector({ seg }: { seg: RouteSegment }) {
+  const Icon = seg.legKind === 'waterway' ? Waves : seg.legKind === 'driving' ? Car : Footprints
+  const label = seg.rowingText || (seg as RouteSegment & { durationText?: string }).durationText || (seg.legKind === 'driving' ? seg.drivingText : seg.walkingText)
+  const distance = formatSegmentDistance(seg)
   const line = { flex: 1, height: 1, minHeight: 1, alignSelf: 'center', background: 'var(--border-primary)' }
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 14px', fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.2 }}>
       <div style={line} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <Icon size={11} strokeWidth={2} />
-        <span>{seg.durationText ?? (driving ? seg.drivingText : seg.walkingText)}</span>
-        <span style={{ opacity: 0.4 }}>·</span>
-        <span>{seg.distanceText}</span>
+        <span>{label}</span>
+        {distance && <span style={{ opacity: 0.4 }}>·</span>}
+        {distance && <span>{distance}</span>}
       </div>
       <div style={line} />
     </div>
@@ -240,9 +247,8 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
   onAddPlaceToDay,
   onNavigateToFiles,
   routeShown = false,
-  routeProfile = 'driving',
+  routeSegments = [],
   onToggleRoute,
-  onSetRouteProfile,
   onExpandedDaysChange,
   pushUndo,
   canUndo = false,
@@ -279,7 +285,6 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
   const [isCalculating, setIsCalculating] = useState(false)
   const [routeInfo, setRouteInfo] = useState(null)
   const [routeLegs, setRouteLegs] = useState<Record<number, RouteSegment>>({})
-  const legsAbortRef = useRef<AbortController | null>(null)
   const [draggingId, setDraggingId] = useState(null)
   const [lockedIds, setLockedIds] = useState(new Set())
   const [lockHoverId, setLockHoverId] = useState(null)
@@ -501,41 +506,31 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, assignments, dayNotes, reservations, transportPosVersion])
 
-  // Per-segment driving times for the selected day's connectors. Groups located
-  // places into runs (split at transports), one cached OSRM call per run, keyed by
-  // the start place's assignment id. Shares RouteCalculator's cache with the map.
+  // Sidebar connectors reuse the mixed route legs already calculated for the map,
+  // so rowing/walking/driving follows the trip default and per-leg overrides.
   useEffect(() => {
-    if (legsAbortRef.current) legsAbortRef.current.abort()
     if (!selectedDayId || !routeShown) { setRouteLegs({}); return }
     const merged = mergedItemsMap[selectedDayId] || []
-    const runs: { id: number; lat: number; lng: number }[][] = []
-    let cur: { id: number; lat: number; lng: number }[] = []
+    const startAssignmentIds: number[] = []
+    let cur: number[] = []
     for (const it of merged) {
       if (it.type === 'place' && it.data.place?.lat && it.data.place?.lng) {
-        cur.push({ id: it.data.id, lat: it.data.place.lat, lng: it.data.place.lng })
+        cur.push(it.data.id)
       } else if (it.type === 'transport') {
-        if (cur.length >= 2) runs.push(cur)
+        for (let i = 0; i < cur.length - 1; i++) startAssignmentIds.push(cur[i])
         cur = []
       }
     }
-    if (cur.length >= 2) runs.push(cur)
-    if (runs.length === 0) { setRouteLegs({}); return }
+    for (let i = 0; i < cur.length - 1; i++) startAssignmentIds.push(cur[i])
+    if (startAssignmentIds.length === 0 || routeSegments.length === 0) { setRouteLegs({}); return }
 
-    const controller = new AbortController()
-    legsAbortRef.current = controller
-    ;(async () => {
-      const map: Record<number, RouteSegment> = {}
-      for (const run of runs) {
-        try {
-          const r = await calculateRouteWithLegs(run.map(p => ({ lat: p.lat, lng: p.lng })), { signal: controller.signal, profile: routeProfile })
-          r.legs.forEach((leg, i) => { map[run[i].id] = leg })
-        } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') return
-        }
-      }
-      if (!controller.signal.aborted) setRouteLegs(map)
-    })()
-  }, [selectedDayId, routeShown, routeProfile, mergedItemsMap])
+    const map: Record<number, RouteSegment> = {}
+    startAssignmentIds.forEach((id, i) => {
+      const leg = routeSegments[i]
+      if (leg) map[id] = leg
+    })
+    setRouteLegs(map)
+  }, [selectedDayId, routeShown, routeSegments, mergedItemsMap])
 
   const openAddNote = (dayId, e) => {
     e?.stopPropagation()
@@ -1679,7 +1674,7 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                               </button>
                             )}
                           </div>
-                          {routeLegs[assignment.id] && <RouteConnector seg={routeLegs[assignment.id]} profile={routeProfile} />}
+                          {routeLegs[assignment.id] && <RouteConnector seg={routeLegs[assignment.id]} />}
                           </React.Fragment>
                         )
                       }
@@ -2022,27 +2017,6 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar({
                           <RotateCcw size={12} strokeWidth={2} />
                           {t('dayplan.optimize')}
                         </button>
-                        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-faint)', flexShrink: 0 }}>
-                          {(['driving', 'walking'] as const).map(p => {
-                            const ModeIcon = p === 'driving' ? Car : Footprints
-                            const active = routeProfile === p
-                            return (
-                              <button
-                                key={p}
-                                onClick={() => onSetRouteProfile?.(p)}
-                                aria-label={p === 'driving' ? 'Driving' : 'Walking'}
-                                style={{
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  padding: '6px 10px', border: 'none', cursor: 'pointer',
-                                  background: active ? 'var(--accent)' : 'transparent',
-                                  color: active ? 'var(--accent-text)' : 'var(--text-secondary)',
-                                }}
-                              >
-                                <ModeIcon size={13} strokeWidth={2} />
-                              </button>
-                            )
-                          })}
-                        </div>
                       </div>
                       {routeInfo && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: 12, fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-hover)', borderRadius: 8, padding: '5px 10px' }}>

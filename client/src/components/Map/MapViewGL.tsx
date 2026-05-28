@@ -11,7 +11,62 @@ import { attachLocationMarker, type LocationMarkerHandle } from './locationMarke
 import { ReservationMapboxOverlay } from './reservationsMapbox'
 import LocationButton from './LocationButton'
 import { useGeolocation } from '../../hooks/useGeolocation'
-import type { Place, Reservation } from '../../types'
+import { useTranslation } from '../../i18n'
+import type { Place, Reservation, RouteSegment, GearRouteSegment } from '../../types'
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function routePillInnerHtml(seg: RouteSegment): string {
+  const shell = (inner: string) =>
+    `<div style="display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);color:#fff;border-radius:99px;padding:3px 9px;font-size:9px;font-weight:600;white-space:nowrap;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.3);pointer-events:none;">${inner}</div>`
+  const waterText = seg.rowingText ?? seg.paddleText ?? null
+  if (waterText) {
+    return shell(
+      `<span style="display:flex;align-items:center;gap:3px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13a2 2 0 0 1-4 0V5l4-3 4 3v8"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>${escapeHtml(waterText)}</span>`,
+    )
+  }
+  return shell(
+    `<span style="display:flex;align-items:center;gap:2px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l3-7"/><path d="M10 14l5-5"/><path d="M15 9l-4 7"/><path d="M18 18l-3-7"/></svg>${escapeHtml(seg.walkingText || '')}</span><span style="opacity:0.3">|</span>` +
+      `<span style="display:flex;align-items:center;gap:2px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2-4H7L5 10l-2.5 1.1C1.7 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>${escapeHtml(seg.drivingText || '')}</span>`,
+  )
+}
+
+function lockPopupHtml(
+  lock: NonNullable<RouteSegment['waterwayContext']>['locks'][number],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  const rows = [
+    t('map.lock.alongRoute', { km: (lock.chainageM / 1000).toFixed(1), delay: `${Math.round(lock.delayS / 60)} min` }),
+    lock.tags.opening_hours,
+    lock.tags.phone,
+    lock.tags.vhf ? `VHF ${lock.tags.vhf}` : null,
+    lock.tags.website,
+  ].filter(Boolean).map(v => `<div style="color:#6b7280;font-size:12px;margin-top:3px">${escapeHtml(String(v))}</div>`).join('')
+  return `<div style="min-width:170px"><div style="font-weight:700;font-size:13px">${escapeHtml(lock.name || lock.ref || t('map.lock.title'))}</div>${rows}</div>`
+}
+
+function waterwayContextPopupHtml(
+  context: NonNullable<RouteSegment['waterwayContext']>,
+  t: (key: string) => string,
+): string {
+  const conditions = (context.conditions || []).slice(0, 5).map(c => {
+    const value = c.value == null && c.type === 'tide'
+      ? t('map.waterway.tideDetected')
+      : c.value == null
+        ? t('map.waterway.unavailable')
+        : `${c.value}${c.unit ? ` ${c.unit}` : ''}`
+    const source = c.stationName || c.provider
+    return `<div style="color:#4b5563;font-size:12px;margin-top:4px">${escapeHtml(`${c.label}: ${value}${source ? ` (${source})` : ''}`)}</div>`
+  }).join('')
+  const warnings = (context.warnings || []).map(w => `<div style="color:#92400e;font-size:12px;margin-top:4px">${escapeHtml(w)}</div>`).join('')
+  return `<div style="min-width:220px;max-width:280px"><div style="font-weight:700;font-size:13px">${escapeHtml(t('map.waterway.contextTitle'))}</div>${conditions}${warnings}</div>`
+}
+
+function gearPillInnerHtml(text: string): string {
+  return `<div style="display:flex;align-items:center;gap:5px;background:rgba(217,119,6,0.95);backdrop-filter:blur(8px);color:#fff;border-radius:99px;padding:3px 9px;font-size:9px;font-weight:600;white-space:nowrap;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.3);pointer-events:none;">${escapeHtml(text)}</div>`
+}
 
 function categoryIconSvg(iconName: string | null | undefined, size: number): string {
   const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
@@ -20,18 +75,12 @@ function categoryIconSvg(iconName: string | null | undefined, size: number): str
   } catch { return '' }
 }
 
-interface RouteSegment {
-  mid: [number, number]
-  from: [number, number]
-  to: [number, number]
-  walkingText?: string
-  drivingText?: string
-}
-
 interface Props {
   places: Place[]
   dayPlaces?: Place[]
   route?: [number, number][][] | null
+  gearRoute?: [number, number][][] | null
+  gearRouteSegments?: GearRouteSegment[]
   routeSegments?: RouteSegment[]
   selectedPlaceId?: number | null
   onMarkerClick?: (id: number) => void
@@ -53,7 +102,7 @@ interface Props {
 
 function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean): HTMLDivElement {
   const size = selected ? 44 : 36
-  const borderColor = selected ? '#111827' : (place.category_color || 'white')
+  const borderColor = selected ? '#111827' : 'white'
   const borderWidth = selected ? 3 : 2.5
   const shadow = selected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
@@ -132,6 +181,8 @@ export function MapViewGL({
   places = [],
   dayPlaces = [],
   route = null,
+  gearRoute = null,
+  gearRouteSegments = [],
   routeSegments = [],
   selectedPlaceId = null,
   onMarkerClick,
@@ -150,6 +201,7 @@ export function MapViewGL({
   showReservationStats = false,
   onReservationClick,
 }: Props) {
+  const { t } = useTranslation()
   const mapboxStyle = useSettingsStore(s => s.settings.mapbox_style || 'mapbox://styles/mapbox/standard')
   const mapboxToken = useSettingsStore(s => s.settings.mapbox_access_token || '')
   const mapbox3d = useSettingsStore(s => s.settings.mapbox_3d_enabled !== false)
@@ -161,6 +213,9 @@ export function MapViewGL({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map())
+  const routePillMarkersRef = useRef<mapboxgl.Marker[]>([])
+  const gearPillMarkersRef = useRef<mapboxgl.Marker[]>([])
+  const lockMarkersRef = useRef<mapboxgl.Marker[]>([])
   const locationMarkerRef = useRef<LocationMarkerHandle | null>(null)
   const reservationOverlayRef = useRef<ReservationMapboxOverlay | null>(null)
   // Refs so the reservation overlay always sees the latest callback /
@@ -217,20 +272,31 @@ export function MapViewGL({
       // initial route source — kept around so updates can setData() cheaply
       if (!map.getSource('trip-route')) {
         map.addSource('trip-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        // Apple-Maps style: a darker-blue casing under a bright-blue core, both
-        // rounded. Casing is added first so it sits beneath the core line.
-        map.addLayer({
-          id: 'trip-route-casing',
-          type: 'line',
-          source: 'trip-route',
-          paint: { 'line-color': '#0a5cc2', 'line-width': 8 },
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-        })
         map.addLayer({
           id: 'trip-route-line',
           type: 'line',
           source: 'trip-route',
-          paint: { 'line-color': '#0a84ff', 'line-width': 5 },
+          paint: {
+            'line-color': '#111827',
+            'line-width': 3,
+            'line-opacity': 0.9,
+            'line-dasharray': [2, 1.5],
+          },
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+        })
+      }
+      // Gear shuttle — hotel-to-hotel driving geometry (distinct from crew itinerary).
+      if (!map.getSource('trip-gear-route')) {
+        map.addSource('trip-gear-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        map.addLayer({
+          id: 'trip-gear-route-line',
+          type: 'line',
+          source: 'trip-gear-route',
+          paint: {
+            'line-color': '#d97706',
+            'line-width': 4,
+            'line-opacity': 0.88,
+          },
           layout: { 'line-cap': 'round', 'line-join': 'round' },
         })
       }
@@ -313,7 +379,7 @@ export function MapViewGL({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const curAlt = (ll as any).alt ?? 0
         if (Math.abs(curAlt - alt) > 0.25) {
-          marker.setLngLat([ll.lng, ll.lat, alt])
+          marker.setLngLat([ll.lng, ll.lat, alt] as unknown as mapboxgl.LngLatLike)
         }
       })
     }
@@ -322,6 +388,10 @@ export function MapViewGL({
     return () => {
       canvas.removeEventListener('mousedown', onAuxDown)
       canvas.removeEventListener('auxclick', onAuxClick)
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+      lockMarkersRef.current.forEach(m => m.remove())
+      lockMarkersRef.current = []
       markersRef.current.forEach(m => m.remove())
       markersRef.current.clear()
       if (reservationOverlayRef.current) {
@@ -447,7 +517,119 @@ export function MapViewGL({
     src.setData({ type: 'FeatureCollection', features })
   }, [route])
 
-  // Travel times now live in the day sidebar (per-segment connectors), not on the map.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const src = map.getSource('trip-gear-route') as mapboxgl.GeoJSONSource | undefined
+    if (!src) return
+    const features = (gearRoute || []).filter(seg => seg && seg.length > 1).map(seg => ({
+      type: 'Feature' as const,
+      properties: {},
+      geometry: { type: 'LineString' as const, coordinates: seg.map(([lat, lng]) => [lng, lat]) },
+    }))
+    src.setData({ type: 'FeatureCollection', features })
+  }, [gearRoute])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const rebuild = () => {
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+      if (!routeSegments?.length) return
+      if (map.getZoom() < 12) return
+      for (const seg of routeSegments) {
+        if (!seg.mid || seg.mid.length < 2) continue
+        const wrap = document.createElement('div')
+        wrap.innerHTML = routePillInnerHtml(seg)
+        const el = wrap.firstElementChild as HTMLElement | null
+        if (!el) continue
+        try {
+          const m = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([seg.mid[1], seg.mid[0]])
+            .addTo(map)
+          routePillMarkersRef.current.push(m)
+        } catch { /* noop */ }
+      }
+    }
+    rebuild()
+    map.on('zoomend', rebuild)
+    return () => {
+      map.off('zoomend', rebuild)
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+    }
+  }, [routeSegments, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const rebuild = () => {
+      gearPillMarkersRef.current.forEach(m => m.remove())
+      gearPillMarkersRef.current = []
+      if (!gearRouteSegments?.length) return
+      if (map.getZoom() < 12) return
+      for (const seg of gearRouteSegments) {
+        if (!seg.mid || seg.mid.length < 2) continue
+        const wrap = document.createElement('div')
+        wrap.innerHTML = gearPillInnerHtml(seg.pillText)
+        const el = wrap.firstElementChild as HTMLElement | null
+        if (!el) continue
+        try {
+          const m = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([seg.mid[1], seg.mid[0]])
+            .addTo(map)
+          gearPillMarkersRef.current.push(m)
+        } catch { /* noop */ }
+      }
+    }
+    rebuild()
+    map.on('zoomend', rebuild)
+    return () => {
+      map.off('zoomend', rebuild)
+      gearPillMarkersRef.current.forEach(m => m.remove())
+      gearPillMarkersRef.current = []
+    }
+  }, [gearRouteSegments, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    lockMarkersRef.current.forEach(m => m.remove())
+    lockMarkersRef.current = []
+    for (const seg of routeSegments || []) {
+      for (const lock of seg.waterwayContext?.locks || []) {
+        const el = document.createElement('div')
+        el.style.cssText = 'width:22px;height:22px;border-radius:50%;background:#0f766e;color:white;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;font-family:-apple-system,system-ui,sans-serif;'
+        el.textContent = 'L'
+        try {
+          const popup = new mapboxgl.Popup({ offset: 16 }).setHTML(lockPopupHtml(lock, t))
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([lock.lng, lock.lat])
+            .setPopup(popup)
+            .addTo(map)
+          lockMarkersRef.current.push(marker)
+        } catch { /* noop */ }
+      }
+      if (seg.waterwayContext && ((seg.waterwayContext.conditions?.length || 0) > 0 || (seg.waterwayContext.warnings?.length || 0) > 0)) {
+        const el = document.createElement('div')
+        el.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#1d4ed8;color:white;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.22);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;font-family:-apple-system,system-ui,sans-serif;'
+        el.textContent = 'i'
+        try {
+          const popup = new mapboxgl.Popup({ offset: 15 }).setHTML(waterwayContextPopupHtml(seg.waterwayContext, t))
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([seg.mid[1], seg.mid[0]])
+            .setPopup(popup)
+            .addTo(map)
+          lockMarkersRef.current.push(marker)
+        } catch { /* noop */ }
+      }
+    }
+    return () => {
+      lockMarkersRef.current.forEach(m => m.remove())
+      lockMarkersRef.current = []
+    }
+  }, [routeSegments, mapReady, t])
 
   // Update GPX geometries
   useEffect(() => {

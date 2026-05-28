@@ -238,6 +238,10 @@ export const tripsApi = {
   removeMember: (id: number | string, userId: number) => apiClient.delete(`/trips/${id}/members/${userId}`).then(r => r.data),
   copy: (id: number | string, data?: { title?: string }) => apiClient.post(`/trips/${id}/copy`, data || {}).then(r => r.data),
   bundle: (id: number | string) => apiClient.get(`/trips/${id}/bundle`).then(r => r.data),
+  postDayRouteGeometry: (tripId: number | string, dayId: number | string, config?: { signal?: AbortSignal }) =>
+    apiClient.post(`/trips/${tripId}/days/${dayId}/route-geometry`, {}, config).then(r => r.data),
+  getGearRoute: (tripId: number | string, config?: { signal?: AbortSignal }) =>
+    apiClient.get(`/trips/${tripId}/gear-route`, config).then(r => r.data),
 }
 
 export const daysApi = {
@@ -287,6 +291,8 @@ export const assignmentsApi = {
   getParticipants: (tripId: number | string, id: number) => apiClient.get(`/trips/${tripId}/assignments/${id}/participants`).then(r => r.data),
   setParticipants: (tripId: number | string, id: number, userIds: number[]) => apiClient.put(`/trips/${tripId}/assignments/${id}/participants`, { user_ids: userIds }).then(r => r.data),
   updateTime: (tripId: number | string, id: number, times: Record<string, unknown>) => apiClient.put(`/trips/${tripId}/assignments/${id}/time`, times).then(r => r.data),
+  updateRouteLeg: (tripId: number | string, dayId: number | string, assignmentId: number, data: { route_leg_override: string | null }) =>
+    apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/${assignmentId}/route-leg`, data).then(r => r.data),
 }
 
 export const packingApi = {

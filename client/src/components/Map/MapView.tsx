@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback, createElement, memo } from 'react'
 import DOM from 'react-dom'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, Popup, useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -17,10 +17,11 @@ function categoryIconSvg(iconName: string | null | undefined, size: number): str
     return renderToStaticMarkup(createElement(IconComponent, { size, color: 'white', strokeWidth: 2.5 }))
   } catch { return '' }
 }
-import type { Place } from '../../types'
+import type { Place, RouteSegment, GearRouteSegment } from '../../types'
+import { useTranslation } from '../../i18n'
 
 // Fix default marker icons for vite
-delete L.Icon.Default.prototype._getIconUrl
+delete (L.Icon.Default.prototype as typeof L.Icon.Default.prototype & { _getIconUrl?: unknown })._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
@@ -43,7 +44,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
   const cached = iconCache.get(cacheKey)
   if (cached) return cached
   const size = isSelected ? 44 : 36
-  const borderColor = isSelected ? '#111827' : (place.category_color || 'white')
+  const borderColor = isSelected ? '#111827' : 'white'
   const borderWidth = isSelected ? 3 : 2.5
   const shadow = isSelected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
@@ -121,7 +122,7 @@ interface SelectionControllerProps {
   places: Place[]
   selectedPlaceId: number | null
   dayPlaces: Place[]
-  paddingOpts: Record<string, number>
+  paddingOpts: L.FitBoundsOptions
 }
 
 function SelectionController({ places, selectedPlaceId, dayPlaces, paddingOpts }: SelectionControllerProps) {
@@ -166,7 +167,7 @@ interface BoundsControllerProps {
   hasDayDetail?: boolean
   places: Place[]
   fitKey: number
-  paddingOpts: Record<string, number>
+  paddingOpts: L.FitBoundsOptions
 }
 
 function BoundsController({ places, fitKey, paddingOpts, hasDayDetail }: BoundsControllerProps) {
@@ -210,7 +211,7 @@ function MapClickHandler({ onClick }: MapClickHandlerProps) {
   useEffect(() => {
     if (!onClick) return
     map.on('click', onClick)
-    return () => map.off('click', onClick)
+    return () => { map.off('click', onClick) }
   }, [map, onClick])
   return null
 }
@@ -220,12 +221,112 @@ function MapContextMenuHandler({ onContextMenu }: { onContextMenu: ((e: L.Leafle
   useEffect(() => {
     if (!onContextMenu) return
     map.on('contextmenu', onContextMenu)
-    return () => map.off('contextmenu', onContextMenu)
+    return () => { map.off('contextmenu', onContextMenu) }
   }, [map, onContextMenu])
   return null
 }
 
-// Travel times are shown in the day sidebar (per-segment connectors), not on the map.
+// ── Route travel time label ──
+interface RouteLabelProps {
+  midpoint: [number, number]
+  walkingText: string
+  drivingText: string
+  rowingText?: string | null
+}
+
+function RouteLabel({ midpoint, walkingText, drivingText, rowingText }: RouteLabelProps) {
+  const map = useMap()
+  const [visible, setVisible] = useState(map ? map.getZoom() >= 12 : false)
+
+  useEffect(() => {
+    if (!map) return
+    const check = () => setVisible(map.getZoom() >= 12)
+    check()
+    map.on('zoomend', check)
+    return () => { map.off('zoomend', check) }
+  }, [map])
+
+  if (!visible || !midpoint) return null
+
+  const rowingLineBlock = rowingText
+    ? `<span style="display:flex;align-items:center;gap:3px">${'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13a2 2 0 0 1-4 0V5l4-3 4 3v8"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>'}${escAttr(rowingText)}</span>`
+    : ''
+  const walkDriveBlock = !rowingText
+    ? `<span style="display:flex;align-items:center;gap:2px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l3-7"/><path d="M10 14l5-5"/><path d="M15 9l-4 7"/><path d="M18 18l-3-7"/></svg>
+        ${escAttr(walkingText)}
+      </span>
+      <span style="opacity:0.3">|</span>
+      <span style="display:flex;align-items:center;gap:2px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2-4H7L5 10l-2.5 1.1C1.7 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        ${escAttr(drivingText)}
+      </span>`
+    : ''
+
+  const icon = L.divIcon({
+    className: 'route-info-pill',
+    html: `<div style="
+      display:flex;align-items:center;gap:5px;
+      background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
+      color:#fff;border-radius:99px;padding:3px 9px;
+      font-size:9px;font-weight:600;white-space:nowrap;
+      font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+      box-shadow:0 2px 12px rgba(0,0,0,0.3);
+      pointer-events:none;
+      position:relative;left:-50%;top:-50%;
+    ">
+      ${rowingLineBlock || walkDriveBlock}
+    </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+
+  return <Marker position={midpoint} icon={icon} interactive={false} zIndexOffset={2000} />
+}
+
+const lockIcon = L.divIcon({
+  className: 'waterway-lock-marker',
+  html: `<div style="
+    width:22px;height:22px;border-radius:50%;
+    background:#0f766e;color:white;border:2px solid white;
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:800;font-family:-apple-system,system-ui,sans-serif;
+  ">L</div>`,
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+})
+
+const waterwayInfoIcon = L.divIcon({
+  className: 'waterway-info-marker',
+  html: `<div style="
+    width:20px;height:20px;border-radius:50%;
+    background:#1d4ed8;color:white;border:2px solid white;
+    box-shadow:0 2px 8px rgba(0,0,0,0.22);
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:800;font-family:-apple-system,system-ui,sans-serif;
+  ">i</div>`,
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+})
+
+function formatLockDelay(seconds: number): string {
+  const min = Math.round(seconds / 60)
+  return `${min} min`
+}
+
+function conditionLine(
+  condition: NonNullable<RouteSegment['waterwayContext']>['conditions'][number],
+  t: (key: string) => string,
+): string {
+  const value = condition.value == null && condition.type === 'tide'
+    ? t('map.waterway.tideDetected')
+    : condition.value == null
+      ? t('map.waterway.unavailable')
+      : `${condition.value}${condition.unit ? ` ${condition.unit}` : ''}`
+  const source = condition.stationName || condition.provider
+  return `${condition.label}: ${value}${source ? ` (${source})` : ''}`
+}
 
 // Module-level photo cache shared with PlaceAvatar
 import { getCached, isLoading, fetchPhoto, onThumbReady, getAllThumbs } from '../../services/photoService'
@@ -337,7 +438,9 @@ export const MapView = memo(function MapView({
   places = [],
   dayPlaces = [],
   route = null,
-  routeSegments = [],
+  gearRoute = null,
+  gearRouteSegments = [] as GearRouteSegment[],
+  routeSegments = [] as RouteSegment[],
   selectedPlaceId = null,
   onMarkerClick,
   onMapClick,
@@ -356,6 +459,7 @@ export const MapView = memo(function MapView({
   visibleConnectionIds = [] as number[],
   onReservationClick,
 }: any) {
+  const { t } = useTranslation()
   const visibleReservations = useMemo(() => {
     if (!visibleConnectionIds || visibleConnectionIds.length === 0) return []
     const set = new Set(visibleConnectionIds)
@@ -364,12 +468,12 @@ export const MapView = memo(function MapView({
   // Dynamic padding: account for sidebars + bottom inspector + day detail panel
   const paddingOpts = useMemo(() => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
-    if (isMobile) return { padding: [40, 20] }
+    if (isMobile) return { padding: [40, 20] as L.PointTuple }
     const top = 60
     const bottom = hasInspector ? 320 : hasDayDetail ? 280 : 60
     const left = leftWidth + 40
     const right = rightWidth + 40
-    return { paddingTopLeft: [left, top], paddingBottomRight: [right, bottom] }
+    return { paddingTopLeft: [left, top] as L.PointTuple, paddingBottomRight: [right, bottom] as L.PointTuple }
   }, [leftWidth, rightWidth, hasInspector, hasDayDetail])
 
   // Hover state for the single tooltip overlay (replaces per-marker <Tooltip>)
@@ -549,19 +653,98 @@ export const MapView = memo(function MapView({
         {markers}
       </MarkerClusterGroup>
 
-      {/* Apple-Maps style: darker-blue casing under a bright-blue core, rounded. */}
-      {route && route.length > 0 && route.flatMap((seg, i) => seg.length > 1 ? [
-        <Polyline
-          key={`${i}-casing`}
-          positions={seg}
-          pathOptions={{ color: '#0a5cc2', weight: 8, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
-        />,
-        <Polyline
-          key={`${i}-core`}
-          positions={seg}
-          pathOptions={{ color: '#0a84ff', weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
-        />,
-      ] : [])}
+      {route && route.length > 0 && (
+        <>
+          {route.map((seg, i) => seg.length > 1 && (
+            <Polyline
+              key={i}
+              positions={seg}
+              color="#111827"
+              weight={3}
+              opacity={0.9}
+              dashArray="6, 5"
+            />
+          ))}
+          {route.map((seg, i) => seg.length > 1 && routeSegments
+            .filter((s) => (s.polylineIndex ?? 0) === i)
+            .map((s, j) => (
+              <RouteLabel
+                key={`${i}-${j}`}
+                midpoint={s.mid}
+                walkingText={s.walkingText}
+                drivingText={s.drivingText}
+                rowingText={s.rowingText ?? s.paddleText}
+              />
+            )))}
+          {routeSegments.flatMap((s, segIdx) => (s.waterwayContext?.locks || []).map((lock) => (
+            <Marker
+              key={`lock-${segIdx}-${lock.id}`}
+              position={[lock.lat, lock.lng]}
+              icon={lockIcon}
+              interactive
+              zIndexOffset={1500}
+            >
+              <Popup>
+                <div style={{ minWidth: 170 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{lock.name || lock.ref || t('map.lock.title')}</div>
+                  <div style={{ color: '#4b5563', fontSize: 12, marginTop: 2 }}>
+                    {t('map.lock.alongRoute', { km: (lock.chainageM / 1000).toFixed(1), delay: formatLockDelay(lock.delayS) })}
+                  </div>
+                  {lock.tags.opening_hours && <div style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>{lock.tags.opening_hours}</div>}
+                  {lock.tags.phone && <div style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>{lock.tags.phone}</div>}
+                  {lock.tags.vhf && <div style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>VHF {lock.tags.vhf}</div>}
+                  {lock.tags.website && <div style={{ color: '#2563eb', fontSize: 12, marginTop: 2 }}>{lock.tags.website}</div>}
+                </div>
+              </Popup>
+            </Marker>
+          )))}
+          {routeSegments.filter((s) => s.waterwayContext && ((s.waterwayContext.conditions?.length || 0) > 0 || (s.waterwayContext.warnings?.length || 0) > 0)).map((s, segIdx) => (
+            <Marker
+              key={`waterway-info-${segIdx}`}
+              position={s.mid}
+              icon={waterwayInfoIcon}
+              interactive
+              zIndexOffset={1450}
+            >
+              <Popup>
+                <div style={{ minWidth: 220, maxWidth: 280 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{t('map.waterway.contextTitle')}</div>
+                  {(s.waterwayContext?.conditions || []).slice(0, 5).map((condition, idx) => (
+                    <div key={`condition-${idx}`} style={{ color: '#4b5563', fontSize: 12, marginTop: 4 }}>{conditionLine(condition, t)}</div>
+                  ))}
+                  {(s.waterwayContext?.warnings || []).map((warning, idx) => (
+                    <div key={`warning-${idx}`} style={{ color: '#92400e', fontSize: 12, marginTop: 4 }}>{warning}</div>
+                  ))}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </>
+      )}
+      {gearRoute && gearRoute.length > 0 && (
+        <>
+          {gearRoute.map((seg, i) => seg.length > 1 && (
+            <Polyline
+              key={`gear-${i}`}
+              positions={seg}
+              color="#d97706"
+              weight={4}
+              opacity={0.88}
+            />
+          ))}
+          {gearRoute.map((seg, i) => seg.length > 1 && gearRouteSegments
+            .filter((s) => s.polylineIndex === i)
+            .map((s, j) => (
+              <RouteLabel
+                key={`gear-${i}-${j}`}
+                midpoint={s.mid}
+                walkingText=""
+                drivingText=""
+                rowingText={s.pillText}
+              />
+            )))}
+        </>
+      )}
 
       {/* GPX imported route geometries */}
       {gpxPolylines}
