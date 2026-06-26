@@ -50,3 +50,6 @@ export * from './sanitize/sanitize';
 
 // i18n registry (language list + pure helpers — no locale data)
 export * from './i18n/languages';
+
+// Day-plan route itinerary builder (shared between server route calc and client preview)
+export * from './route/index';
