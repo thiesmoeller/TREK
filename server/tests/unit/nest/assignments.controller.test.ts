@@ -60,6 +60,30 @@ describe('DayAssignmentsController (parity with the legacy day-assignments route
     const s = svc({ assignmentExistsInDay: vi.fn().mockReturnValue(true), deleteAssignment: vi.fn() } as Partial<AssignmentsService>);
     expect(new DayAssignmentsController(s).remove(user, '5', '3', '9')).toEqual({ success: true });
   });
+
+  describe('PUT /:assignmentId/route-mode', () => {
+    it('403 without day_edit; 400 missing/invalid override; 404 assignment; then updates + broadcasts', () => {
+      expect(thrown(() => new DayAssignmentsController(svc({ canEdit: vi.fn().mockReturnValue(false) })).routeMode(user, '5', '3', '9', {}))).toEqual({ status: 403, body: { error: 'No permission' } });
+      expect(thrown(() => new DayAssignmentsController(svc()).routeMode(user, '5', '3', '9', {}))).toEqual({ status: 400, body: { error: 'route_mode_override required' } });
+      expect(thrown(() => new DayAssignmentsController(svc()).routeMode(user, '5', '3', '9', { route_mode_override: 'kayak' }))).toEqual({ status: 400, body: { error: 'Invalid route_mode_override' } });
+
+      expect(thrown(() => new DayAssignmentsController(svc({ updateRouteModeOverride: vi.fn().mockReturnValue(undefined) } as Partial<AssignmentsService>)).routeMode(user, '5', '3', '9', { route_mode_override: 'waterway' }))).toEqual({ status: 404, body: { error: 'Assignment not found' } });
+
+      const updateRouteModeOverride = vi.fn().mockReturnValue({ id: 9, route_mode_override: 'waterway' });
+      const broadcast = vi.fn();
+      const s = svc({ updateRouteModeOverride, broadcast } as Partial<AssignmentsService>);
+      expect(new DayAssignmentsController(s).routeMode(user, '5', '3', '9', { route_mode_override: 'waterway' }, 'sock')).toEqual({
+        assignment: { id: 9, route_mode_override: 'waterway' },
+      });
+      expect(updateRouteModeOverride).toHaveBeenCalledWith('9', '3', '5', 'waterway');
+      expect(broadcast).toHaveBeenCalledWith('5', 'assignment:updated', { assignment: { id: 9, route_mode_override: 'waterway' } }, 'sock');
+
+      const updateClear = vi.fn().mockReturnValue({ id: 9, route_mode_override: null });
+      const clear = svc({ updateRouteModeOverride: updateClear, broadcast: vi.fn() } as Partial<AssignmentsService>);
+      new DayAssignmentsController(clear).routeMode(user, '5', '3', '9', { route_mode_override: 'inherit' });
+      expect(updateClear).toHaveBeenCalledWith('9', '3', '5', null);
+    });
+  });
 });
 
 describe('AssignmentOpsController (parity with the per-assignment op routes)', () => {

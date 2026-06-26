@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Modal from '../shared/Modal'
-import { Calendar, Camera, Search, X, UserPlus, Bell } from 'lucide-react'
+import { Calendar, Camera, Search, X, UserPlus, Bell, Waves } from 'lucide-react'
 import { tripsApi, authApi } from '../../api/client'
 import CustomSelect from '../shared/CustomSelect'
 import { useAuthStore } from '../../store/authStore'
@@ -51,6 +51,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     end_date: '',
     reminder_days: 0 as number,
     day_count: 7 as number | '',
+    default_route_mode: 'walking' as 'waterway' | 'walking' | 'driving',
+    waterway_speed_kmh: '' as number | '',
   })
   const [customReminder, setCustomReminder] = useState(false)
   const [error, setError] = useState('')
@@ -78,12 +80,16 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         end_date: trip.end_date || '',
         reminder_days: rd,
         day_count: trip.day_count || 7,
+        default_route_mode: (['waterway', 'walking', 'driving'].includes(String(trip.default_route_mode))
+          ? (trip.default_route_mode as 'waterway' | 'walking' | 'driving')
+          : 'walking'),
+        waterway_speed_kmh: typeof trip.waterway_speed_kmh === 'number' ? trip.waterway_speed_kmh : '',
       })
       setCustomReminder(![0, 1, 3, 9].includes(rd))
       setCoverPreview(trip.cover_image || null)
       setCoverSearchQuery('')
     } else {
-      setFormData({ title: '', description: '', start_date: '', end_date: '', reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7 })
+      setFormData({ title: '', description: '', start_date: '', end_date: '', reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7, default_route_mode: 'walking', waterway_speed_kmh: '' })
       setCustomReminder(false)
       setCoverPreview(null)
       setCoverSearchQuery('')
@@ -134,6 +140,11 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         reminder_days: formData.reminder_days,
+        default_route_mode: formData.default_route_mode,
+        waterway_speed_kmh:
+          formData.default_route_mode === 'waterway' && formData.waterway_speed_kmh !== ''
+            ? Number(formData.waterway_speed_kmh)
+            : null,
         ...(!formData.start_date && !formData.end_date ? { day_count: Number(formData.day_count) } : {}),
       })
       const createdTrip = result ? result.trip : undefined
@@ -415,6 +426,54 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
             readOnly={!canEditTrip} placeholder={t('dashboard.tripDescriptionPlaceholder')} rows={3}
             className={`${inputCls} resize-none`} />
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.defaultRouteLegKind')}</label>
+          {canEditTrip ? (
+            <CustomSelect
+              value={formData.default_route_mode}
+              onChange={v => update('default_route_mode', v as typeof formData.default_route_mode)}
+              options={[
+                { value: 'walking', label: t('dashboard.routeLegDefaultWalking') },
+                { value: 'driving', label: t('dashboard.routeLegDefaultDriving') },
+                { value: 'waterway', label: t('dashboard.routeLegDefaultWaterway') },
+              ]}
+              size="sm"
+            />
+          ) : (
+            <p className="text-sm text-slate-600">
+              {formData.default_route_mode === 'walking'
+                ? t('dashboard.routeLegDefaultWalking')
+                : formData.default_route_mode === 'driving'
+                  ? t('dashboard.routeLegDefaultDriving')
+                  : t('dashboard.routeLegDefaultWaterway')}
+            </p>
+          )}
+          {canEditTrip && (
+            <p className="text-xs text-slate-400 mt-1.5">{t('dashboard.routeLegDefaultHint')}</p>
+          )}
+        </div>
+
+        {formData.default_route_mode === 'waterway' && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <Waves className="inline w-4 h-4 mr-1" />{t('dashboard.waterwaySpeed')}
+            </label>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={formData.waterway_speed_kmh}
+              onChange={e => canEditTrip && update('waterway_speed_kmh', e.target.value === '' ? '' : Number(e.target.value))}
+              readOnly={!canEditTrip}
+              placeholder={t('dashboard.waterwaySpeedPlaceholder')}
+              className={inputCls}
+            />
+            {canEditTrip && (
+              <p className="text-xs text-slate-400 mt-1.5">{t('dashboard.waterwaySpeedHint')}</p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>

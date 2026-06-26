@@ -89,6 +89,8 @@ function createTables(db: Database.Database): void {
       is_archived INTEGER DEFAULT 0,
       reminder_days INTEGER DEFAULT 3,
       feed_token TEXT,
+      default_route_mode TEXT DEFAULT 'walking',
+      waterway_speed_kmh REAL DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -163,6 +165,7 @@ function createTables(db: Database.Database): void {
       reservation_status TEXT DEFAULT 'none',
       reservation_notes TEXT,
       reservation_datetime TEXT,
+      route_mode_override TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 

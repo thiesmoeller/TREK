@@ -40,6 +40,7 @@ export const assignmentSchema = z.object({
   assignment_time: z.string().nullable().optional(),
   assignment_end_time: z.string().nullable().optional(),
   participants: z.array(assignmentParticipantSchema).optional(),
+  route_mode_override: z.string().nullable().optional(),
   created_at: z.string().optional(),
   place: assignmentPlaceSchema,
 });

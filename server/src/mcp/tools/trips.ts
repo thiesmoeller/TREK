@@ -44,10 +44,11 @@ export function registerTripTools(server: McpServer, userId: number, scopes: str
         start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Start date (YYYY-MM-DD)'),
         end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('End date (YYYY-MM-DD)'),
         currency: z.string().length(3).optional().describe('Currency code (e.g. EUR, USD)'),
+        default_route_mode: z.enum(['waterway', 'walking', 'driving']).optional().describe('Default routing between consecutive day stops: waterway (OSM graph), OSRM foot, or OSRM driving'),
       },
       annotations: TOOL_ANNOTATIONS_NON_IDEMPOTENT,
     },
-    async ({ title, description, start_date, end_date, currency }) => {
+    async ({ title, description, start_date, end_date, currency, default_route_mode }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (start_date) {
         const d = new Date(start_date + 'T00:00:00Z');
@@ -62,7 +63,7 @@ export function registerTripTools(server: McpServer, userId: number, scopes: str
       if (start_date && end_date && new Date(end_date) < new Date(start_date)) {
         return { content: [{ type: 'text' as const, text: 'End date must be after start date.' }], isError: true };
       }
-      const { trip } = createTrip(userId, { title, description, start_date, end_date, currency }, MAX_MCP_TRIP_DAYS);
+      const { trip } = createTrip(userId, { title, description, start_date, end_date, currency, ...(default_route_mode !== undefined ? { default_route_mode } : {}) }, MAX_MCP_TRIP_DAYS);
       return ok({ trip });
     }
   );
@@ -80,10 +81,11 @@ export function registerTripTools(server: McpServer, userId: number, scopes: str
         currency: z.string().length(3).optional(),
         is_archived: z.boolean().optional().describe('Archive (true) or unarchive (false) the trip'),
         cover_image: z.string().optional().describe('Cover image path, e.g. /uploads/covers/abc.jpg'),
+        default_route_mode: z.enum(['waterway', 'walking', 'driving']).optional().describe('Default routing between consecutive day stops'),
       },
       annotations: TOOL_ANNOTATIONS_WRITE,
     },
-    async ({ tripId, title, description, start_date, end_date, currency, is_archived, cover_image }) => {
+    async ({ tripId, title, description, start_date, end_date, currency, is_archived, cover_image, default_route_mode }) => {
       if (isDemoUser(userId)) return demoDenied();
       if (!canAccessTrip(tripId, userId)) return noAccess();
       if (!hasTripPermission('trip_edit', tripId, userId)) return permissionDenied();
@@ -97,7 +99,10 @@ export function registerTripTools(server: McpServer, userId: number, scopes: str
         if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== end_date)
           return { content: [{ type: 'text' as const, text: 'end_date is not a valid calendar date.' }], isError: true };
       }
-      const { updatedTrip } = updateTrip(tripId, userId, { title, description, start_date, end_date, currency, is_archived, cover_image }, 'user');
+      const { updatedTrip } = updateTrip(tripId, userId, {
+        title, description, start_date, end_date, currency, is_archived, cover_image,
+        ...(default_route_mode !== undefined ? { default_route_mode } : {}),
+      }, 'user');
       safeBroadcast(tripId, 'trip:updated', { trip: updatedTrip });
       return ok({ trip: updatedTrip });
     }

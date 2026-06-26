@@ -34,6 +34,9 @@ export interface Trip {
   cover_image?: string | null;
   is_archived: number;
   reminder_days: number;
+  /** Default route mode from a stop to the next: waterway or OSRM-backed road modes. */
+  default_route_mode?: string | null;
+  waterway_speed_kmh?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -104,6 +107,8 @@ export interface DayAssignment {
   reservation_datetime?: string | null;
   assignment_time?: string | null;
   assignment_end_time?: string | null;
+  /** travel mode from this stop to the next geocoded stop (null = use trip default) */
+  route_mode_override?: string | null;
   created_at?: string;
 }
 

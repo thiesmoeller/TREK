@@ -38,6 +38,8 @@ export const tripSchema = z.object({
   is_owner: z.number().optional(),
   owner_username: z.string().optional(),
   shared_count: z.number().optional(),
+  default_route_mode: z.string().nullable().optional(),
+  waterway_speed_kmh: z.number().nullable().optional(),
 });
 export type Trip = z.infer<typeof tripSchema>;
 
@@ -66,6 +68,8 @@ export const tripCreateRequestSchema = z.object({
   currency: z.string().optional(),
   reminder_days: z.number().optional(),
   day_count: z.number().optional(),
+  default_route_mode: z.string().nullable().optional(),
+  waterway_speed_kmh: z.number().nullable().optional(),
 });
 export type TripCreateRequest = z.infer<typeof tripCreateRequestSchema>;
 
@@ -80,6 +84,8 @@ export const tripUpdateRequestSchema = z.object({
   day_count: z.number().optional(),
   is_archived: z.union([z.boolean(), z.number()]).optional(),
   cover_image: z.string().nullable().optional(),
+  default_route_mode: z.string().nullable().optional(),
+  waterway_speed_kmh: z.number().nullable().optional(),
 });
 export type TripUpdateRequest = z.infer<typeof tripUpdateRequestSchema>;
 

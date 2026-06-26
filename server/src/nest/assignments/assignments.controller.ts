@@ -14,6 +14,7 @@ import type { User } from '../../types';
 import { AssignmentsService } from './assignments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { ROUTE_LEG_KINDS } from '../../services/routeLegKinds';
 
 type Trip = NonNullable<ReturnType<AssignmentsService['verifyTripAccess']>>;
 
@@ -74,6 +75,34 @@ export class DayAssignmentsController {
     this.assignments.broadcast(tripId, 'assignment:created', { assignment }, socketId);
     this.assignments.notifyPlaceCreated(tripId, body.place_id);
     return { assignment };
+  }
+
+  @Put(':assignmentId/route-mode')
+  routeMode(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Param('dayId') dayId: string,
+    @Param('assignmentId') assignmentId: string,
+    @Body() body: { route_mode_override?: unknown },
+    @Headers('x-socket-id') socketId?: string,
+  ) {
+    const trip = requireTrip(this.assignments, tripId, user);
+    requireEdit(this.assignments, trip, user);
+    if (!('route_mode_override' in body)) {
+      throw new HttpException({ error: 'route_mode_override required' }, 400);
+    }
+    const v = body.route_mode_override;
+    let stored: string | null;
+    if (v === null || v === '' || v === 'inherit') stored = null;
+    else if (typeof v !== 'string' || !(ROUTE_LEG_KINDS as readonly string[]).includes(v.trim().toLowerCase())) {
+      throw new HttpException({ error: 'Invalid route_mode_override' }, 400);
+    } else stored = v.trim().toLowerCase();
+    const updated = this.assignments.updateRouteModeOverride(assignmentId, dayId, tripId, stored);
+    if (!updated) {
+      throw new HttpException({ error: 'Assignment not found' }, 404);
+    }
+    this.assignments.broadcast(tripId, 'assignment:updated', { assignment: updated }, socketId);
+    return { assignment: updated };
   }
 
   @Put('reorder')

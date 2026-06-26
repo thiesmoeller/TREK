@@ -105,7 +105,24 @@ export class TripsController {
       throw new HttpException({ error: 'End date must be after start date' }, 400);
     }
     const parsedDayCount = day_count ? Math.min(Math.max(Number(day_count) || 7, 1), 365) : undefined;
-    const { trip, tripId, reminderDays } = this.trips.create(user.id, { title, description, start_date, end_date, currency, reminder_days, day_count: parsedDayCount });
+    const drkRaw: string | null | undefined =
+      typeof body.default_route_mode === 'string'
+        ? body.default_route_mode
+        : body.default_route_mode === null
+          ? null
+          : undefined;
+    const waterwaySpeedRaw = body.waterway_speed_kmh;
+    const waterwaySpeedKmh = waterwaySpeedRaw === null || waterwaySpeedRaw === undefined
+      ? undefined
+      : Number(waterwaySpeedRaw);
+    const { trip, tripId, reminderDays } = this.trips.create(user.id, {
+      title, description, start_date, end_date, currency, reminder_days,
+      day_count: parsedDayCount,
+      ...(drkRaw !== undefined ? { default_route_mode: drkRaw } : {}),
+      ...(waterwaySpeedKmh !== undefined && !Number.isNaN(waterwaySpeedKmh)
+        ? { waterway_speed_kmh: waterwaySpeedKmh }
+        : {}),
+    });
     writeAudit({ userId: user.id, action: 'trip.create', ip: getClientIp(req), details: { tripId, title, reminder_days: reminderDays === 0 ? 'none' : `${reminderDays} days` } });
     if (reminderDays > 0) logInfo(`${user.email} set ${reminderDays}-day reminder for trip "${title}"`);
     return { trip };
@@ -134,7 +151,10 @@ export class TripsController {
     if (body.cover_image !== undefined && !this.trips.can('trip_cover_upload', user.role, ownerId, user.id, isMember)) {
       throw new HttpException({ error: 'No permission to change cover image' }, 403);
     }
-    const editFields = ['title', 'description', 'start_date', 'end_date', 'currency', 'reminder_days', 'day_count'];
+    const editFields = [
+      'title', 'description', 'start_date', 'end_date', 'currency', 'reminder_days', 'day_count',
+      'default_route_mode', 'waterway_speed_kmh',
+    ];
     if (editFields.some((f) => body[f] !== undefined) && !this.trips.can('trip_edit', user.role, ownerId, user.id, isMember)) {
       throw new HttpException({ error: 'No permission to edit this trip' }, 403);
     }

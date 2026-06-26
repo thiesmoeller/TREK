@@ -75,6 +75,21 @@ describe('Tool: create_trip', () => {
     });
   });
 
+  it('stores default_route_mode via MCP create_trip', async () => {
+    const { user } = createUser(testDb);
+    await withHarness(user.id, async (h) => {
+      const result = await h.client.callTool({
+        name: 'create_trip',
+        arguments: { title: 'Waterway weekend', default_route_mode: 'waterway' },
+      });
+      expect(result.isError).not.toBe(true);
+      const data = parseToolResult(result) as { trip: { id: number; default_route_mode?: string } };
+      expect(data.trip.default_route_mode).toBe('waterway');
+      const row = testDb.prepare('SELECT default_route_mode FROM trips WHERE id = ?').get(data.trip.id) as { default_route_mode: string };
+      expect(row.default_route_mode).toBe('waterway');
+    });
+  });
+
   it('creates a trip with dates and auto-generates correct number of days', async () => {
     const { user } = createUser(testDb);
     await withHarness(user.id, async (h) => {

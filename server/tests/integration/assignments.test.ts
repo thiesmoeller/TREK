@@ -389,4 +389,51 @@ describe('Assignment participants', () => {
     expect(update.body.assignment.place.place_time).toBe('14:00');
     expect(update.body.assignment.place.end_time).toBe('16:00');
   });
+
+  it('ASSIGN-010 — PUT /route-mode persists assignment override', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day, place } = setupAssignmentFixtures(user.id);
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id });
+    const assignmentId = create.body.assignment.id;
+
+    const setWaterway = await request(app)
+      .put(`/api/trips/${trip.id}/days/${day.id}/assignments/${assignmentId}/route-mode`)
+      .set('Cookie', authCookie(user.id))
+      .send({ route_mode_override: 'waterway' });
+    expect(setWaterway.status).toBe(200);
+    expect(setWaterway.body.assignment.route_mode_override).toBe('waterway');
+
+    const row = testDb.prepare('SELECT route_mode_override FROM day_assignments WHERE id = ?').get(assignmentId) as { route_mode_override: string | null };
+    expect(row.route_mode_override).toBe('waterway');
+
+    const clear = await request(app)
+      .put(`/api/trips/${trip.id}/days/${day.id}/assignments/${assignmentId}/route-mode`)
+      .set('Cookie', authCookie(user.id))
+      .send({ route_mode_override: 'inherit' });
+    expect(clear.status).toBe(200);
+    expect(clear.body.assignment.route_mode_override).toBeNull();
+  });
+
+  it('ASSIGN-011 — PUT /route-mode rejects invalid override (400)', async () => {
+    const { user } = createUser(testDb);
+    const { trip, day, place } = setupAssignmentFixtures(user.id);
+
+    const create = await request(app)
+      .post(`/api/trips/${trip.id}/days/${day.id}/assignments`)
+      .set('Cookie', authCookie(user.id))
+      .send({ place_id: place.id });
+    const assignmentId = create.body.assignment.id;
+
+    const res = await request(app)
+      .put(`/api/trips/${trip.id}/days/${day.id}/assignments/${assignmentId}/route-mode`)
+      .set('Cookie', authCookie(user.id))
+      .send({ route_mode_override: 'kayak' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid route_mode_override');
+  });
 });

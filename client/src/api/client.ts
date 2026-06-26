@@ -342,6 +342,8 @@ export const tripsApi = {
   removeMember: (id: number | string, userId: number) => apiClient.delete(`/trips/${id}/members/${userId}`).then(r => r.data),
   copy: (id: number | string, data?: TripCopyRequest) => apiClient.post(`/trips/${id}/copy`, data || {}).then(r => r.data),
   bundle: (id: number | string) => apiClient.get(`/trips/${id}/bundle`).then(r => r.data),
+  getDayRoute: (tripId: number | string, dayId: number | string, config?: { signal?: AbortSignal }) =>
+    apiClient.get(`/trips/${tripId}/days/${dayId}/route`, config).then(r => r.data),
 }
 
 export const daysApi = {
@@ -394,6 +396,8 @@ export const assignmentsApi = {
   getParticipants: (tripId: number | string, id: number) => apiClient.get(`/trips/${tripId}/assignments/${id}/participants`).then(r => r.data),
   setParticipants: (tripId: number | string, id: number, userIds: number[]) => apiClient.put(`/trips/${tripId}/assignments/${id}/participants`, { user_ids: userIds } satisfies AssignmentParticipantsRequest).then(r => r.data),
   updateTime: (tripId: number | string, id: number, times: AssignmentTimeRequest) => apiClient.put(`/trips/${tripId}/assignments/${id}/time`, times).then(r => r.data),
+  updateRouteMode: (tripId: number | string, dayId: number | string, assignmentId: number, data: { route_mode_override: string | null }) =>
+    apiClient.put(`/trips/${tripId}/days/${dayId}/assignments/${assignmentId}/route-mode`, data).then(r => r.data),
 }
 
 export const packingApi = {

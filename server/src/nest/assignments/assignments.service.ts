@@ -80,4 +80,8 @@ export class AssignmentsService {
   setParticipants(id: string, userIds: number[]) {
     return svc.setParticipants(id, userIds);
   }
+
+  updateRouteModeOverride(assignmentId: string, dayId: string, tripId: string, stored: string | null) {
+    return svc.updateRouteModeOverride(assignmentId, dayId, tripId, stored);
+  }
 }
