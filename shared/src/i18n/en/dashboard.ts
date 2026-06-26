@@ -82,6 +82,16 @@ const dashboard: TranslationStrings = {
   'dashboard.dayCount': 'Number of Days',
   'dashboard.dayCountHint': 'How many days to plan for when no travel dates are set.',
   'dashboard.noDateHint': 'No date set — 7 default days will be created. You can change this anytime.',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Cover Image',
   'dashboard.addCoverImage': 'Add cover image (or drag & drop)',
   'dashboard.addMembers': 'Travel buddies',

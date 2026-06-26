@@ -19,11 +19,14 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomLabelPlaceholder': 'Libellé (facultatif)',
   'dashboard.timezoneCustomTzPlaceholder': 'ex. America/New_York',
   'dashboard.timezoneCustomAdd': 'Ajouter',
-  'dashboard.timezoneCustomErrorEmpty': 'Saisissez un identifiant de fuseau horaire',
-  'dashboard.timezoneCustomErrorInvalid': 'Fuseau horaire invalide. Utilisez un format comme Europe/Berlin',
+  'dashboard.timezoneCustomErrorEmpty':
+    'Saisissez un identifiant de fuseau horaire',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Fuseau horaire invalide. Utilisez un format comme Europe/Berlin',
   'dashboard.timezoneCustomErrorDuplicate': 'Déjà ajouté',
   'dashboard.emptyTitle': 'Aucun voyage',
-  'dashboard.emptyText': 'Créez votre premier voyage et commencez à planifier !',
+  'dashboard.emptyText':
+    'Créez votre premier voyage et commencez à planifier !',
   'dashboard.emptyButton': 'Créer un premier voyage',
   'dashboard.nextTrip': 'Prochain voyage',
   'dashboard.shared': 'Partagé',
@@ -68,9 +71,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'Date de début',
   'dashboard.endDate': 'Date de fin',
   'dashboard.dayCount': 'Nombre de jours',
-  'dashboard.dayCountHint': "Nombre de jours à planifier lorsqu'aucune date de voyage n'est définie.",
+  'dashboard.dayCountHint':
+    "Nombre de jours à planifier lorsqu'aucune date de voyage n'est définie.",
   'dashboard.noDateHint':
     'Aucune date définie — 7 jours par défaut seront créés. Vous pouvez modifier cela à tout moment.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Image de couverture',
   'dashboard.addCoverImage': 'Ajouter une image de couverture',
   'dashboard.addMembers': 'Compagnons de voyage',
@@ -86,7 +94,8 @@ const dashboard: TranslationStrings = {
   'dashboard.coverSearchError': 'Échec de la recherche Unsplash',
   'dashboard.useUnsplashPhoto': 'Utiliser la photo Unsplash de {photographer}',
   'dashboard.titleRequired': 'Le titre est obligatoire',
-  'dashboard.endDateError': 'La date de fin doit être postérieure à la date de début',
+  'dashboard.endDateError':
+    'La date de fin doit être postérieure à la date de début',
   'dashboard.greeting.morning': 'Bonjour,',
   'dashboard.greeting.afternoon': 'Bon après-midi,',
   'dashboard.greeting.evening': 'Bonsoir,',
@@ -147,7 +156,8 @@ const dashboard: TranslationStrings = {
   'dashboard.fx.to': 'Vers',
   'dashboard.fx.unavailable': 'Taux indisponible',
   'dashboard.tz.searchPlaceholder': 'Rechercher un fuseau horaire…',
-  'dashboard.tz.empty': "Pas encore d'autres fuseaux horaires — ajoutez-en un avec +",
+  'dashboard.tz.empty':
+    "Pas encore d'autres fuseaux horaires — ajoutez-en un avec +",
   'dashboard.upcoming.title': 'Prochaines réservations',
   'dashboard.upcoming.empty': "Rien de réservé pour l'instant.",
   'dashboard.confirm.copy.title': 'Copier ce voyage ?',
@@ -172,5 +182,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Ajouter un fuseau horaire',
   'dashboard.aria.removeTimezone': 'Supprimer {city}',
   'dashboard.dayCountRequired': 'Le nombre de jours est requis',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

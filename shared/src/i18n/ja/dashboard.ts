@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': '例：America/New_York',
   'dashboard.timezoneCustomAdd': '追加',
   'dashboard.timezoneCustomErrorEmpty': 'タイムゾーンIDを入力してください',
-  'dashboard.timezoneCustomErrorInvalid': '無効なタイムゾーンです（例：Europe/Berlin）',
+  'dashboard.timezoneCustomErrorInvalid':
+    '無効なタイムゾーンです（例：Europe/Berlin）',
   'dashboard.timezoneCustomErrorDuplicate': 'すでに追加されています',
   'dashboard.emptyTitle': '旅行はまだありません',
   'dashboard.emptyText': '最初の旅行を作成して計画を始めましょう！',
@@ -56,7 +57,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': '旅行の復元に失敗しました',
   'dashboard.toast.copied': '旅行をコピーしました！',
   'dashboard.toast.copyError': '旅行のコピーに失敗しました',
-  'dashboard.confirm.delete': '旅行「{title}」を削除しますか？すべての場所と計画は完全に削除されます。',
+  'dashboard.confirm.delete':
+    '旅行「{title}」を削除しますか？すべての場所と計画は完全に削除されます。',
   'dashboard.confirm.copy.title': 'この旅行をコピーしますか？',
   'dashboard.confirm.copy.willCopy': 'コピーされる内容',
   'dashboard.confirm.copy.will1': '日数、訪問先 & 日ごとの割り当て',
@@ -81,7 +83,12 @@ const dashboard: TranslationStrings = {
   'dashboard.endDate': '終了日',
   'dashboard.dayCount': '日数',
   'dashboard.dayCountHint': '日付が未設定の場合に作成する日数です。',
-  'dashboard.noDateHint': '日付未設定 — 既定で7日分が作成されます。後で変更できます。',
+  'dashboard.noDateHint':
+    '日付未設定 — 既定で7日分が作成されます。後で変更できます。',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'カバー画像',
   'dashboard.addCoverImage': 'カバー画像を追加（またはドラッグ＆ドロップ）',
   'dashboard.addMembers': '同行者',
@@ -169,5 +176,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'タイムゾーンを追加',
   'dashboard.aria.removeTimezone': '{city}を削除',
   'dashboard.dayCountRequired': '日数は必須です',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

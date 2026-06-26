@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'np. Europe/Warsaw',
   'dashboard.timezoneCustomAdd': 'Dodaj',
   'dashboard.timezoneCustomErrorEmpty': 'Podaj identyfikator strefy czasowej',
-  'dashboard.timezoneCustomErrorInvalid': 'Nieprawidłowa strefa czasowa. Użyj formatu takiego jak Europe/Warsaw',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Nieprawidłowa strefa czasowa. Użyj formatu takiego jak Europe/Warsaw',
   'dashboard.timezoneCustomErrorDuplicate': 'Już dodana',
   'dashboard.emptyTitle': 'Brak podróży',
   'dashboard.emptyText': 'Utwórz swoją pierwszą podróż i zacznij planować!',
@@ -51,7 +52,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.archiveError': 'Nie udało się zarchiwizować podróży',
   'dashboard.toast.restored': 'Podróż została przywrócona',
   'dashboard.toast.restoreError': 'Nie udało się przywrócić podróży',
-  'dashboard.confirm.delete': 'Usunąć podróż "{title}"? Wszystkie miejsca i plany zostaną trwale usunięte.',
+  'dashboard.confirm.delete':
+    'Usunąć podróż "{title}"? Wszystkie miejsca i plany zostaną trwale usunięte.',
   'dashboard.editTrip': 'Edytuj podróż',
   'dashboard.createTrip': 'Utwórz nową podróż',
   'dashboard.tripTitle': 'Nazwa podróży',
@@ -61,9 +63,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'Data rozpoczęcia',
   'dashboard.endDate': 'Data zakończenia',
   'dashboard.dayCount': 'Liczba dni',
-  'dashboard.dayCountHint': 'Ile dni zaplanować, gdy nie ustawiono dat podróży.',
+  'dashboard.dayCountHint':
+    'Ile dni zaplanować, gdy nie ustawiono dat podróży.',
   'dashboard.noDateHint':
     'Nie ustawiono daty — zostanie utworzonych 7 domyślnych dni. Możesz to zmienić w dowolnym momencie.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Okładka',
   'dashboard.addCoverImage': 'Dodaj okładkę (lub przeciągnij i upuść)',
   'dashboard.addMembers': 'Uczestnicy podróży',
@@ -170,5 +177,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Dodaj strefę czasową',
   'dashboard.aria.removeTimezone': 'Usuń {city}',
   'dashboard.dayCountRequired': 'Liczba dni jest wymagana',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'bijv. America/New_York',
   'dashboard.timezoneCustomAdd': 'Toevoegen',
   'dashboard.timezoneCustomErrorEmpty': 'Voer een tijdzone-identificatie in',
-  'dashboard.timezoneCustomErrorInvalid': 'Ongeldige tijdzone. Gebruik een formaat zoals Europe/Berlin',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Ongeldige tijdzone. Gebruik een formaat zoals Europe/Berlin',
   'dashboard.timezoneCustomErrorDuplicate': 'Al toegevoegd',
   'dashboard.emptyTitle': 'Nog geen reizen',
   'dashboard.emptyText': 'Maak je eerste reis aan en begin met plannen!',
@@ -56,7 +57,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': 'Reis herstellen mislukt',
   'dashboard.toast.copied': 'Reis gekopieerd!',
   'dashboard.toast.copyError': 'Reis kopiëren mislukt',
-  'dashboard.confirm.delete': 'Reis "{title}" verwijderen? Alle plaatsen en plannen worden permanent verwijderd.',
+  'dashboard.confirm.delete':
+    'Reis "{title}" verwijderen? Alle plaatsen en plannen worden permanent verwijderd.',
   'dashboard.editTrip': 'Reis bewerken',
   'dashboard.createTrip': 'Nieuwe reis aanmaken',
   'dashboard.tripTitle': 'Titel',
@@ -66,8 +68,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'Startdatum',
   'dashboard.endDate': 'Einddatum',
   'dashboard.dayCount': 'Aantal dagen',
-  'dashboard.dayCountHint': 'Hoeveel dagen te plannen wanneer er geen reisdata zijn ingesteld.',
-  'dashboard.noDateHint': 'Geen datum ingesteld — er worden standaard 7 dagen aangemaakt. Je kunt dit altijd wijzigen.',
+  'dashboard.dayCountHint':
+    'Hoeveel dagen te plannen wanneer er geen reisdata zijn ingesteld.',
+  'dashboard.noDateHint':
+    'Geen datum ingesteld — er worden standaard 7 dagen aangemaakt. Je kunt dit altijd wijzigen.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Omslagafbeelding',
   'dashboard.addCoverImage': 'Omslagafbeelding toevoegen',
   'dashboard.addMembers': 'Reisgenoten',
@@ -169,5 +177,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Tijdzone toevoegen',
   'dashboard.aria.removeTimezone': '{city} verwijderen',
   'dashboard.dayCountRequired': 'Aantal dagen is verplicht',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

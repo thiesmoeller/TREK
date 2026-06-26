@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'pl. America/New_York',
   'dashboard.timezoneCustomAdd': 'Hozzáadás',
   'dashboard.timezoneCustomErrorEmpty': 'Adj meg egy időzóna-azonosítót',
-  'dashboard.timezoneCustomErrorInvalid': 'Érvénytelen időzóna. Használj Europe/Berlin formátumot',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Érvénytelen időzóna. Használj Europe/Berlin formátumot',
   'dashboard.timezoneCustomErrorDuplicate': 'Már hozzáadva',
   'dashboard.emptyTitle': 'Még nincsenek utazások',
   'dashboard.emptyText':
@@ -57,7 +58,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': 'Nem sikerült visszaállítani',
   'dashboard.toast.copied': 'Utazás másolva!',
   'dashboard.toast.copyError': 'Nem sikerült másolni az utazást',
-  'dashboard.confirm.delete': '"{title}" utazás törlése? Minden hely és terv véglegesen törlődik.',
+  'dashboard.confirm.delete':
+    '"{title}" utazás törlése? Minden hely és terv véglegesen törlődik.',
   'dashboard.editTrip': 'Utazás szerkesztése',
   'dashboard.createTrip': 'Új utazás létrehozása',
   'dashboard.tripTitle': 'Cím',
@@ -67,8 +69,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'Kezdő dátum',
   'dashboard.endDate': 'Záró dátum',
   'dashboard.dayCount': 'Napok száma',
-  'dashboard.dayCountHint': 'Hány napot tervezzen, ha nincsenek utazási dátumok megadva.',
-  'dashboard.noDateHint': 'Nincs dátum megadva — 7 alapértelmezett nap jön létre. Ezt bármikor módosíthatod.',
+  'dashboard.dayCountHint':
+    'Hány napot tervezzen, ha nincsenek utazási dátumok megadva.',
+  'dashboard.noDateHint':
+    'Nincs dátum megadva — 7 alapértelmezett nap jön létre. Ezt bármikor módosíthatod.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Borítókép',
   'dashboard.addCoverImage': 'Borítókép hozzáadása',
   'dashboard.addMembers': 'Útitársak',
@@ -170,5 +178,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Időzóna hozzáadása',
   'dashboard.aria.removeTimezone': '{city} eltávolítása',
   'dashboard.dayCountRequired': 'A napok száma kötelező',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

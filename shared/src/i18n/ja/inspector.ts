@@ -18,5 +18,12 @@ const inspector: TranslationStrings = {
   'inspector.editRes': '予約を編集',
   'inspector.participants': '参加者',
   'inspector.trackStats': '統計を記録',
+  'inspector.routeLegLabel': 'Route from this stop to the next',
+  'inspector.routeLegInheritHelp': '"Trip default" uses the mode set on the trip form (waterway, walking, or driving).',
+  'inspector.routeLegRouteCalcHint': 'Turn on route calculation in Settings -> Map to draw waterways and roads on the map.',
+  'inspector.routeLegInherit': 'Trip default',
+  'inspector.routeLegWaterway': 'Waterway',
+  'inspector.routeLegWalking': 'Walk',
+  'inspector.routeLegDriving': 'Drive',
 };
 export default inspector;

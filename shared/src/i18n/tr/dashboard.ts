@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'örn. America/New_York',
   'dashboard.timezoneCustomAdd': 'Ekle',
   'dashboard.timezoneCustomErrorEmpty': 'Saat dilimi tanımlayıcısı girin',
-  'dashboard.timezoneCustomErrorInvalid': 'Geçersiz saat dilimi. Europe/Berlin gibi bir biçim kullanın',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Geçersiz saat dilimi. Europe/Berlin gibi bir biçim kullanın',
   'dashboard.timezoneCustomErrorDuplicate': 'Zaten ekli',
   'dashboard.emptyTitle': 'Henüz seyahat yok',
   'dashboard.emptyText': 'İlk seyahatinizi oluşturup planlamaya başlayın!',
@@ -56,7 +57,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': 'Geri alınamadı',
   'dashboard.toast.copied': 'Seyahat kopyalandı!',
   'dashboard.toast.copyError': 'Kopyalanamadı',
-  'dashboard.confirm.delete': '"{title}" seyahatini sil? Tüm yerler ve planlar kalıcı olarak silinir.',
+  'dashboard.confirm.delete':
+    '"{title}" seyahatini sil? Tüm yerler ve planlar kalıcı olarak silinir.',
   'dashboard.confirm.copy.title': 'Bu seyahat kopyalansın mı?',
   'dashboard.confirm.copy.willCopy': 'Kopyalanacak',
   'dashboard.confirm.copy.will1': 'Günler, yerler ve gün atamaları',
@@ -81,7 +83,12 @@ const dashboard: TranslationStrings = {
   'dashboard.endDate': 'Bitiş Tarihi',
   'dashboard.dayCount': 'Gün sayısı',
   'dashboard.dayCountHint': 'Seyahat tarihi yoksa kaç gün planlanacağı.',
-  'dashboard.noDateHint': 'Tarih yok — varsayılan 7 gün oluşturulur. İstediğiniz zaman değiştirebilirsiniz.',
+  'dashboard.noDateHint':
+    'Tarih yok — varsayılan 7 gün oluşturulur. İstediğiniz zaman değiştirebilirsiniz.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Kapak Görseli',
   'dashboard.addCoverImage': 'Kapak ekle (sürükleyip bırakabilirsiniz)',
   'dashboard.addMembers': 'Seyahat arkadaşları',
@@ -169,5 +176,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Saat dilimi ekle',
   'dashboard.aria.removeTimezone': '{city} kaldır',
   'dashboard.dayCountRequired': 'Gün sayısı gereklidir',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

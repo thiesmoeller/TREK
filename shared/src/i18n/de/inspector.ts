@@ -18,5 +18,14 @@ const inspector: TranslationStrings = {
   'inspector.editRes': 'Reservierung bearbeiten',
   'inspector.participants': 'Teilnehmer',
   'inspector.trackStats': 'Streckendaten',
+  'inspector.routeLegLabel': 'Route von diesem Stop zum nächsten',
+  'inspector.routeLegInheritHelp':
+    '"Trip-Standard" entspricht der Einstellung im Trip (rudern auf dem Wasser, zu Fuß oder Auto).',
+  'inspector.routeLegRouteCalcHint':
+    'Aktiviere Routenberechnung unter Einstellungen -> Karte, um Wasser- und Straßenrouten zu zeichnen.',
+  'inspector.routeLegInherit': 'Trip-Standard',
+  'inspector.routeLegWaterway': 'Ruderstrecke auf dem Wasser',
+  'inspector.routeLegWalking': 'Zu Fuß',
+  'inspector.routeLegDriving': 'Mit dem Auto',
 };
 export default inspector;

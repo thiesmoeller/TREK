@@ -69,6 +69,16 @@ const dashboard: TranslationStrings = {
   'dashboard.dayCount': 'Anzahl Tage',
   'dashboard.dayCountHint': 'Wie viele Tage geplant werden sollen, wenn kein Reisezeitraum gesetzt ist.',
   'dashboard.noDateHint': 'Kein Datum gesetzt — es werden 7 Standardtage erstellt. Du kannst das jederzeit ändern.',
+  'dashboard.waterwaySpeed': 'Geschwindigkeit auf dem Wasserweg',
+  'dashboard.waterwaySpeedPlaceholder': 'Server-Standard',
+  'dashboard.waterwaySpeedHint':
+    'Optionale km/h-Schätzung für die Wasserweg-Dauer. Leer lassen für den Server-Standard.',
+  'dashboard.defaultRouteLegKind': 'Standard-Route zwischen Stopps',
+  'dashboard.routeLegDefaultWalking': 'Zu Fuß (OSRM Fuß)',
+  'dashboard.routeLegDefaultDriving': 'Mit dem Auto (OSRM Auto)',
+  'dashboard.routeLegDefaultWaterway': 'Auf dem Wasser rudern',
+  'dashboard.routeLegDefaultHint':
+    'Gilt zwischen jedem Stop und dem nächsten, wenn du dort keinen anderen Modus einstellst.',
   'dashboard.coverImage': 'Titelbild',
   'dashboard.addCoverImage': 'Titelbild hinzufügen (oder per Drag & Drop)',
   'dashboard.addMembers': 'Reisebegleiter',

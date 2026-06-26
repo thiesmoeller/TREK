@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'مثال: Asia/Riyadh',
   'dashboard.timezoneCustomAdd': 'إضافة',
   'dashboard.timezoneCustomErrorEmpty': 'أدخل معرّف منطقة زمنية',
-  'dashboard.timezoneCustomErrorInvalid': 'منطقة زمنية غير صالحة. استخدم صيغة مثل Asia/Riyadh',
+  'dashboard.timezoneCustomErrorInvalid':
+    'منطقة زمنية غير صالحة. استخدم صيغة مثل Asia/Riyadh',
   'dashboard.timezoneCustomErrorDuplicate': 'مضافة بالفعل',
   'dashboard.emptyTitle': 'لا توجد رحلات بعد',
   'dashboard.emptyText': 'أنشئ رحلتك الأولى وابدأ التخطيط',
@@ -56,7 +57,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': 'فشل الاستعادة',
   'dashboard.toast.copied': 'تم نسخ الرحلة!',
   'dashboard.toast.copyError': 'فشل نسخ الرحلة',
-  'dashboard.confirm.delete': 'حذف الرحلة "{title}"؟ سيتم حذف جميع الأماكن والخطط نهائيًا.',
+  'dashboard.confirm.delete':
+    'حذف الرحلة "{title}"؟ سيتم حذف جميع الأماكن والخطط نهائيًا.',
   'dashboard.editTrip': 'تعديل الرحلة',
   'dashboard.createTrip': 'إنشاء رحلة جديدة',
   'dashboard.tripTitle': 'العنوان',
@@ -66,8 +68,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'تاريخ البداية',
   'dashboard.endDate': 'تاريخ النهاية',
   'dashboard.dayCount': 'عدد الأيام',
-  'dashboard.dayCountHint': 'عدد الأيام المراد التخطيط لها عندما لا يتم تحديد تواريخ السفر.',
-  'dashboard.noDateHint': 'لا يوجد تاريخ محدد. سيتم إنشاء 7 أيام افتراضية ويمكنك تغيير ذلك لاحقًا.',
+  'dashboard.dayCountHint':
+    'عدد الأيام المراد التخطيط لها عندما لا يتم تحديد تواريخ السفر.',
+  'dashboard.noDateHint':
+    'لا يوجد تاريخ محدد. سيتم إنشاء 7 أيام افتراضية ويمكنك تغيير ذلك لاحقًا.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'صورة الغلاف',
   'dashboard.addCoverImage': 'إضافة صورة غلاف',
   'dashboard.addMembers': 'رفاق السفر',
@@ -169,5 +177,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'إضافة منطقة زمنية',
   'dashboard.aria.removeTimezone': 'إزالة {city}',
   'dashboard.dayCountRequired': 'عدد الأيام مطلوب',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

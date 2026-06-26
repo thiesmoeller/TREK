@@ -20,7 +20,8 @@ const dashboard: TranslationStrings = {
   'dashboard.timezoneCustomTzPlaceholder': 'ej. America/New_York',
   'dashboard.timezoneCustomAdd': 'Añadir',
   'dashboard.timezoneCustomErrorEmpty': 'Introduce una zona horaria',
-  'dashboard.timezoneCustomErrorInvalid': 'Zona horaria no válida. Usa formato como Europe/Madrid',
+  'dashboard.timezoneCustomErrorInvalid':
+    'Zona horaria no válida. Usa formato como Europe/Madrid',
   'dashboard.timezoneCustomErrorDuplicate': 'Ya añadida',
   'dashboard.emptyTitle': 'Aún no hay viajes',
   'dashboard.emptyText': 'Crea tu primer viaje y empieza a planificar',
@@ -56,7 +57,8 @@ const dashboard: TranslationStrings = {
   'dashboard.toast.restoreError': 'No se pudo restaurar el viaje',
   'dashboard.toast.copied': '¡Viaje copiado!',
   'dashboard.toast.copyError': 'No se pudo copiar el viaje',
-  'dashboard.confirm.delete': '¿Eliminar el viaje "{title}"? Todos los lugares y planes se borrarán permanentemente.',
+  'dashboard.confirm.delete':
+    '¿Eliminar el viaje "{title}"? Todos los lugares y planes se borrarán permanentemente.',
   'dashboard.editTrip': 'Editar viaje',
   'dashboard.createTrip': 'Crear nuevo viaje',
   'dashboard.tripTitle': 'Título',
@@ -66,8 +68,14 @@ const dashboard: TranslationStrings = {
   'dashboard.startDate': 'Fecha de inicio',
   'dashboard.endDate': 'Fecha de fin',
   'dashboard.dayCount': 'Número de días',
-  'dashboard.dayCountHint': 'Cuántos días planificar cuando no se han establecido fechas de viaje.',
-  'dashboard.noDateHint': 'Sin fecha definida: se crearán 7 días por defecto. Puedes cambiarlo cuando quieras.',
+  'dashboard.dayCountHint':
+    'Cuántos días planificar cuando no se han establecido fechas de viaje.',
+  'dashboard.noDateHint':
+    'Sin fecha definida: se crearán 7 días por defecto. Puedes cambiarlo cuando quieras.',
+  'dashboard.waterwaySpeed': 'Waterway speed',
+  'dashboard.waterwaySpeedPlaceholder': 'Server default',
+  'dashboard.waterwaySpeedHint':
+    'Optional km/h estimate for waterway duration. Leave blank to use the server default.',
   'dashboard.coverImage': 'Imagen de portada',
   'dashboard.addCoverImage': 'Añadir imagen de portada',
   'dashboard.addMembers': 'Compañeros de viaje',
@@ -151,7 +159,8 @@ const dashboard: TranslationStrings = {
   'dashboard.confirm.copy.willCopy': 'Se copiará',
   'dashboard.confirm.copy.will1': 'Días, lugares y asignaciones por día',
   'dashboard.confirm.copy.will2': 'Alojamientos y reservas',
-  'dashboard.confirm.copy.will3': 'Partidas de presupuesto y orden de categorías',
+  'dashboard.confirm.copy.will3':
+    'Partidas de presupuesto y orden de categorías',
   'dashboard.confirm.copy.will4': 'Listas de equipaje (sin marcar)',
   'dashboard.confirm.copy.will5': 'Tareas (sin asignar ni marcar)',
   'dashboard.confirm.copy.will6': 'Notas del día',
@@ -169,5 +178,11 @@ const dashboard: TranslationStrings = {
   'dashboard.aria.addTimezone': 'Añadir zona horaria',
   'dashboard.aria.removeTimezone': 'Eliminar {city}',
   'dashboard.dayCountRequired': 'El número de días es obligatorio',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultWalking': 'Walk (OSRM foot)',
+  'dashboard.routeLegDefaultDriving': 'Drive (OSRM car)',
+  'dashboard.routeLegDefaultWaterway': 'Waterway',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
 };
 export default dashboard;

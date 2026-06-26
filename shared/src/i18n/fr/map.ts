@@ -13,5 +13,7 @@ const map: TranslationStrings = {
   'poi.cat.museums': 'Musées & culture',
   'poi.cat.nature': 'Nature & parcs',
   'poi.cat.activities': 'Activités',
+  'map.route.distanceDuration': '{distance} · {duration}',
+  'map.route.fallbackWaterway': '{distance} · {duration} ({speed} km/h waterway, fallback)',
 };
 export default map;
