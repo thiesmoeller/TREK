@@ -1,6 +1,6 @@
 # Route Optimization
 
-TREK calculates walking and driving times between your places and can reorder them to minimize total travel distance.
+TREK calculates route segments between consecutive day-plan places and can reorder ordinary land days to minimize total travel distance.
 
 <!-- TODO: screenshot: optimized route displayed on map -->
 
@@ -8,9 +8,11 @@ TREK calculates walking and driving times between your places and can reorder th
 
 ## Route calculation
 
-TREK uses **OSRM** (Open Source Routing Machine) to calculate routes between consecutive places in the selected day. No API key is required.
+TREK uses the selected route mode for each segment between consecutive places in the selected day. The trip default is set on the trip form; an individual stop can override the route from that stop to the next stop in the place inspector.
 
-Segment time pills always show both a **driving** time (fetched from OSRM using the driving profile) and a **walking** time (estimated at 5 km/h from the OSRM driving distance). There is no user-selectable routing profile — the driving profile is used for all OSRM requests.
+Supported route modes are **Walking**, **Driving**, and **Waterway**. Walking and driving use **OSRM** (Open Source Routing Machine). Waterway routes use OpenStreetMap waterway data where available.
+
+Waterway routing is a planning aid, not navigation-grade guidance. If a graph route cannot be calculated, TREK draws a straight approximate segment, marks it as approximate, and estimates duration from the trip waterway speed, `TREK_WATERWAY_SPEED_KMH`, or the server fallback.
 
 Route segments reset at any transport reservation (flight, train, car, bus, or cruise) between two places — that leg is not driven or walked, so no ground route is drawn across it.
 
@@ -26,7 +28,11 @@ The **Optimize** button in the sidebar footer reorders places in the current day
 
 Only unlocked places are reordered — locked places stay in their current positions.
 
+Optimize is disabled when the selected day has an effective waterway segment. Straight-line nearest-neighbor ordering is misleading for waterways because navigable distance and access points can differ substantially from geographic distance.
+
 The reorder can be undone immediately using the undo action that appears after it is applied.
+
+Route modes v1 does not include locks, tides, support routes, split-group days, or activity profiles.
 
 ## Route calculation on/off
 

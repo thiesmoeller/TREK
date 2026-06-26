@@ -81,4 +81,10 @@ At the top of the Day Plan sidebar:
 
 Route calculation controls (optimize order, open in Google Maps) appear inside each expanded day section after the place list.
 
+## Route modes
+
+Each trip has a default route mode for day-plan segments: Walking, Driving, or Waterway. A place assignment can override the route mode for the segment from that stop to the next stop.
+
+Waterway routing follows navigable waterway data where available and falls back to an approximate straight line when graph routing fails. Waterway routes are for planning, not navigation.
+
 **See also:** [Places-and-Search](Places-and-Search) · [Map-Features](Map-Features) · [Route-Optimization](Route-Optimization) · [Weather-Forecasts](Weather-Forecasts) · [Reservations-and-Bookings](Reservations-and-Bookings)

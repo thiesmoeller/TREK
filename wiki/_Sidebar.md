@@ -32,6 +32,7 @@
 - [[Day Plans and Notes|Day-Plans-and-Notes]]
 - [[Map Features|Map-Features]]
 - [[Route Optimization|Route-Optimization]]
+- [[Waterway Route Modes|Waterway-Route-Modes]]
 - [[Weather Forecasts|Weather-Forecasts]]
 
 ## Travel Management
