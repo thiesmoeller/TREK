@@ -5,7 +5,8 @@
   "workspaces": [
     "client",
     "server",
-    "shared"
+    "shared",
+    "packages/waterway-routing"
   ],
   "scripts": {
     "version:major": "npm version major --workspaces --include-workspace-root --no-git-tag-version",
@@ -15,9 +16,9 @@
     "version:preminor": "npm version preminor --preid=beta --workspaces --include-workspace-root --no-git-tag-version",
     "version:prepatch": "npm version prepatch --preid=alpha --workspaces --include-workspace-root --no-git-tag-version",
     "version:prerelease": "npm version prerelease --preid=pre --workspaces --include-workspace-root --no-git-tag-version",
-    "dev": "npm run build --workspace=shared && concurrently --names shared,server,client \"npm run build:watch --workspace=shared\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
-    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
-    "test": "npm run test --workspace=shared && npm run test --workspace=server && npm run test --workspace=client",
+    "dev": "npm run build --workspace=shared && npm run build --workspace=@trek/waterway-routing && concurrently --names shared,waterway,server,client \"npm run build:watch --workspace=shared\" \"npm run build --workspace=@trek/waterway-routing -- --watch\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "build": "npm run build --workspace=shared && npm run build --workspace=@trek/waterway-routing && npm run build --workspace=server && npm run build --workspace=client",
+    "test": "npm run test --workspace=shared && npm run test --workspace=@trek/waterway-routing && npm run test --workspace=server && npm run test --workspace=client",
     "test:cov": "npm run test:coverage --workspace=server && npm run test:coverage --workspace=client",
     "test:e2e": "npm run test:e2e --workspace=server",
     "lint": "npm run lint --workspace=shared && npm run lint --workspace=server && npm run lint --workspace=client",

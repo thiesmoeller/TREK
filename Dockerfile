@@ -31,9 +31,12 @@ FROM node:24-alpine AS server-builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
+COPY packages/waterway-routing/package.json ./packages/waterway-routing/
 COPY server/package.json ./server/
 RUN npm ci --workspace=server --ignore-scripts
 COPY --from=shared-builder /app/shared/dist ./shared/dist
+COPY packages/waterway-routing ./packages/waterway-routing
+RUN npm run build --workspace=@trek/waterway-routing
 COPY server/ ./server/
 RUN npm run build --workspace=server
 
@@ -44,6 +47,7 @@ WORKDIR /app
 # Workspace manifests only — source never enters this stage.
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
+COPY packages/waterway-routing/package.json ./packages/waterway-routing/
 COPY server/package.json ./server/
 
 RUN apt-get update && \
@@ -66,6 +70,8 @@ ENV QT_QPA_PLATFORM=offscreen
 ENV KITINERARY_EXTRACTOR_PATH=/usr/local/bin/kitinerary-extractor
 
 COPY --from=server-builder /app/server/dist ./server/dist
+COPY --from=server-builder /app/packages/waterway-routing/dist ./packages/waterway-routing/dist
+COPY --from=server-builder /app/packages/waterway-routing/package.json ./packages/waterway-routing/package.json
 # Runtime data assets read from server/assets at runtime: airports.json (flight
 # transport search) and atlas/*.geojson.gz (Atlas country/region map). The build
 # only emits dist, so these must be copied explicitly or the features silently
