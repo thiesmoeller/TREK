@@ -1,208 +1,343 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useTripStore } from '../store/tripStore'
+import { buildDayRouteItinerary, getTransportForDay, type DayRouteLeg } from '@trek/shared'
 import { useSettingsStore } from '../store/settingsStore'
-import { calculateRouteWithLegs, withHotelBookends } from '../components/Map/RouteCalculator'
-import { getTransportRouteEndpoints } from '../utils/dayMerge'
+import { useTripStore } from '../store/tripStore'
 import { getDayBookendHotels } from '../utils/dayOrder'
+import { tripsApi } from '../api/client'
+import { useTranslation } from '../i18n'
+import { formatRouteLegPill } from '../utils/formatRouteLeg'
 import type { TripStoreState } from '../store/tripStore'
 import type { RouteSegment, RouteResult, Accommodation } from '../types'
 
-const TRANSPORT_TYPES = ['flight', 'train', 'bus', 'car', 'taxi', 'bicycle', 'cruise', 'ferry', 'transport_other']
-
+const ALL_DAYS_ROUTE_CONCURRENCY = 4
 const NO_ACCOMMODATIONS: Accommodation[] = []
 
+type Waypoint = { lat: number; lng: number }
+type RouteBookends = {
+  start?: [number, number][]
+  end?: [number, number][]
+}
+
+export function addAccommodationBookendsToStraightSegments(
+  segments: [number, number][][],
+  bookends: RouteBookends,
+): [number, number][][] {
+  return [
+    ...(bookends.start ? [bookends.start] : []),
+    ...segments,
+    ...(bookends.end ? [bookends.end] : []),
+  ]
+}
+
+export function addAccommodationBookendsToServerRoute(
+  segments: [number, number][][],
+  legs: DayRouteLeg[],
+  bookends: RouteBookends,
+): { segments: [number, number][][]; legs: DayRouteLeg[] } {
+  const leading = bookends.start ? 1 : 0
+  return {
+    segments: addAccommodationBookendsToStraightSegments(segments, bookends),
+    legs: legs.map(leg => ({
+      ...leg,
+      polylineIndex: leg.polylineIndex + leading,
+    })),
+  }
+}
+
+async function fetchAllDayRoutesParallel(
+  tripId: number,
+  dayIds: number[],
+  options: {
+    signal: AbortSignal
+    buildRouteInputForDay: (dayId: number) => {
+      straightSegments: [number, number][][]
+      bookends: RouteBookends
+    }
+    mapRouteLegs: (legs: DayRouteLeg[], polylineOffset?: number) => RouteSegment[]
+  },
+): Promise<{ allSegments: [number, number][][]; allLegs: RouteSegment[] } | { aborted: true }> {
+  const { signal, buildRouteInputForDay, mapRouteLegs } = options
+  const entries = dayIds
+    .map(id => ({ id, routeInput: buildRouteInputForDay(id) }))
+    .map(e => ({ id: e.id, straightForDay: e.routeInput.straightSegments, bookends: e.routeInput.bookends }))
+    .filter(e => e.straightForDay.length > 0)
+
+  const byId = new Map<number, { segments: [number, number][][]; legs: DayRouteLeg[] }>()
+  let cursor = 0
+
+  async function worker() {
+    while (cursor < entries.length) {
+      if (signal.aborted) return
+      const idx = cursor++
+      const { id, straightForDay, bookends } = entries[idx]
+      try {
+        const geo = await tripsApi.getDayRoute(tripId, id, { signal }) as {
+          segments: [number, number][][]
+          legs: DayRouteLeg[]
+        }
+        if (signal.aborted) return
+        byId.set(id, geo?.segments?.length
+          ? addAccommodationBookendsToServerRoute(geo.segments, geo.legs || [], bookends)
+          : { segments: straightForDay, legs: [] })
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (signal.aborted) return
+        byId.set(id, { segments: straightForDay, legs: [] })
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(ALL_DAYS_ROUTE_CONCURRENCY, entries.length) }, () => worker()),
+  )
+  if (signal.aborted) return { aborted: true }
+
+  const allSegments: [number, number][][] = []
+  const allLegs: RouteSegment[] = []
+  for (const id of dayIds) {
+    const { straightSegments } = buildRouteInputForDay(id)
+    if (straightSegments.length === 0) continue
+    const fetched = byId.get(id)
+    if (!fetched) continue
+    const offset = allSegments.length
+    allSegments.push(...fetched.segments)
+    allLegs.push(...mapRouteLegs(fetched.legs, offset))
+  }
+  return { allSegments, allLegs }
+}
+
 /**
- * Manages route calculation state for a selected day. Extracts geo-coded waypoints from
- * day assignments, draws a straight-line route immediately, then upgrades it to real OSRM
- * road geometry with per-segment durations. Aborts in-flight requests when the day changes.
+ * Builds per-day route polylines (split at transport reservations) and optional leg labels.
+ * When route calculation is on, uses the server mixed waterway/OSRM geometry API; otherwise
+ * keeps straight-line segments with no pills.
  */
-export function useRouteCalculation(tripStore: TripStoreState, selectedDayId: number | null, enabled: boolean = true, profile: 'driving' | 'walking' | 'cycling' = 'driving', accommodations: Accommodation[] = NO_ACCOMMODATIONS) {
+export function useRouteCalculation(
+  tripStore: TripStoreState,
+  selectedDayId: number | null,
+  routeShown = true,
+  _routeProfile: 'driving' | 'walking' | 'cycling' = 'driving',
+  accommodations: Accommodation[] = NO_ACCOMMODATIONS,
+) {
+  const { t } = useTranslation()
   const [route, setRoute] = useState<[number, number][][] | null>(null)
   const [routeInfo, setRouteInfo] = useState<RouteResult | null>(null)
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([])
+  const routeCalcEnabled = useSettingsStore((s) => s.settings.route_calculation) !== false
+  const optimizeFromAccommodation = useSettingsStore((s) => s.settings.optimize_from_accommodation)
+  const waterwaySpeedKmh = useTripStore((s) => Number((s.trip as { waterway_speed_kmh?: number } | null)?.waterway_speed_kmh) || 6)
   const routeAbortRef = useRef<AbortController | null>(null)
   const reservationsForSignature = useTripStore((s) => s.reservations)
-  // Draw the day's accommodation bookend legs (hotel → first stop, last stop →
-  // hotel) unless the user turned the setting off — same gate as the sidebar.
-  const optimizeFromAccommodation = useSettingsStore((s) => s.settings.optimize_from_accommodation)
   // Recompute when the user flips km↔mi so leg distances (formatted at compute time)
   // refresh instead of showing stale cached text (#1300).
   const distanceUnit = useSettingsStore((s) => s.settings.distance_unit)
+  const tripId = useTripStore((s) => s.trip?.id ?? null)
+  const tripRouteDefaultSig = useTripStore((s) => `${s.trip?.id ?? ''}_${(s.trip as { default_route_mode?: string } | null)?.default_route_mode ?? 'walking'}`)
 
-  const updateRouteForDay = useCallback(async (dayId: number | null) => {
-    if (routeAbortRef.current) routeAbortRef.current.abort()
-    // Route is manual: only compute when explicitly enabled (the "show route" toggle).
-    if (!dayId || !enabled) { setRoute(null); setRouteSegments([]); return }
-    // Read directly from store (not a render-phase ref) so callers after optimistic
-    // updates or non-optimistic deletes always see the latest assignments.
+  const buildRouteInputForDay = useCallback((dayId: number): {
+    straightSegments: [number, number][][]
+    geocodedWaypoints: Waypoint[]
+    bookends: RouteBookends
+  } => {
     const currentAssignments = useTripStore.getState().assignments || {}
     const da = (currentAssignments[String(dayId)] || []).slice().sort((a, b) => a.order_index - b.order_index)
     const allReservations = useTripStore.getState().reservations || []
     const allDays = useTripStore.getState().days || []
-    const dayOrder = (id: number | null | undefined): number | null => {
-      if (id == null) return null
-      const d = allDays.find(x => x.id === id)
-      return d ? ((d as any).day_number ?? allDays.indexOf(d)) : null
-    }
-    const thisOrder = dayOrder(dayId)
-
-    // Transport reservations for this day with a known position — mirrors getTransportForDay semantics
-    const dayTransports = thisOrder == null ? [] : allReservations.filter(r => {
-      if (!TRANSPORT_TYPES.includes(r.type)) return false
-      const startId = r.day_id
-      if (startId == null) return false
-      const endId = r.end_day_id ?? startId
-      if (startId === endId) {
-        if (startId !== dayId) return false
-      } else {
-        const startOrder = dayOrder(startId)
-        const endOrder = dayOrder(endId)
-        if (startOrder == null || endOrder == null) return false
-        if (thisOrder < startOrder || thisOrder > endOrder) return false
-      }
-      const pos = r.day_positions?.[dayId] ?? r.day_positions?.[String(dayId)] ?? r.day_plan_position
-      return pos != null
+    const defaultRouteMode = (useTripStore.getState().trip as { default_route_mode?: string } | null)?.default_route_mode
+    const { straightSegments } = buildDayRouteItinerary({
+      dayId,
+      days: allDays,
+      assignments: da,
+      reservations: allReservations,
+      defaultRouteMode,
     })
 
-    // Build a unified list of places + transports sorted by effective position.
-    type Entry =
-      | { kind: 'place'; lat: number; lng: number; pos: number }
-      | { kind: 'transport'; from: { lat: number; lng: number } | null; to: { lat: number; lng: number } | null; pos: number }
-    const entries: Entry[] = [
-      ...da.filter(a => a.place?.lat && a.place?.lng).map(a => ({
-        kind: 'place' as const, lat: a.place.lat!, lng: a.place.lng!, pos: a.order_index,
-      })),
-      ...dayTransports.map(r => {
-        const { from, to } = getTransportRouteEndpoints(r, dayId)
-        return {
-          kind: 'transport' as const,
-          from,
-          to,
-          pos: (r.day_positions?.[dayId] ?? r.day_positions?.[String(dayId)] ?? r.day_plan_position) as number,
-        }
-      }),
-    ].sort((a, b) => a.pos - b.pos)
-
-    // Group located places into driving runs.
-    // - A transport WITH a location anchors the route to its departure point (you
-    //   travel there), then breaks the run (you don't drive the flight/train); its
-    //   arrival point starts the next run.
-    // - A transport WITHOUT a location is ignored entirely — the places around it
-    //   connect directly, as if the booking weren't there.
-    const runs: { lat: number; lng: number }[][] = []
-    let currentRun: { lat: number; lng: number }[] = []
-    for (const entry of entries) {
-      if (entry.kind === 'place') {
-        currentRun.push({ lat: entry.lat, lng: entry.lng })
-      } else if (entry.from || entry.to) {
-        if (entry.from) currentRun.push(entry.from)
-        if (currentRun.length >= 2) runs.push(currentRun)
-        currentRun = []
-        if (entry.to) currentRun.push(entry.to)
-      }
-    }
-    if (currentRun.length >= 2) runs.push(currentRun)
-
-    // Bookend the route with the day's accommodation: a hotel → first-stop run and
-    // a last-stop → hotel run, so the drawn line matches the sidebar's hotel legs.
-    // getDayBookendHotels returns the morning/evening hotel (they differ only on a
-    // transfer day) and already filters to accommodations that have coordinates.
     const day = allDays.find(d => d.id === dayId)
-    const bookends = day && optimizeFromAccommodation !== false
+    const bookendHotels = day && optimizeFromAccommodation !== false
       ? getDayBookendHotels(day, allDays, accommodations)
-      : null
-    const flatPts: { lat: number; lng: number }[] = []
-    for (const e of entries) {
-      if (e.kind === 'place') flatPts.push({ lat: e.lat, lng: e.lng })
-      else { if (e.from) flatPts.push(e.from); if (e.to) flatPts.push(e.to) }
+      : {}
+    const { morning: startHotel, evening: endHotel } = bookendHotels
+    const hotelPt = (a?: Accommodation): [number, number] | null =>
+      a && a.place_lat != null && a.place_lng != null ? [a.place_lat, a.place_lng] : null
+    const geocodedWaypoints = da
+      .map(a => a.place)
+      .filter(p => p?.lat != null && p?.lng != null)
+      .map(p => ({ lat: p.lat as number, lng: p.lng as number }))
+    const flatPoints = straightSegments.flat()
+    const samePoint = (pt: [number, number] | undefined, waypoint: Waypoint | undefined): boolean =>
+      !!pt && !!waypoint && pt[0] === waypoint.lat && pt[1] === waypoint.lng
+    const first = flatPoints[0] ?? (geocodedWaypoints[0]
+      ? [geocodedWaypoints[0].lat, geocodedWaypoints[0].lng] as [number, number]
+      : undefined)
+    const last = flatPoints[flatPoints.length - 1] ?? (geocodedWaypoints[geocodedWaypoints.length - 1]
+      ? [
+        geocodedWaypoints[geocodedWaypoints.length - 1].lat,
+        geocodedWaypoints[geocodedWaypoints.length - 1].lng,
+      ] as [number, number]
+      : undefined)
+    const startPt = hotelPt(startHotel)
+    const endPt = hotelPt(endHotel)
+    const firstIsPlace = samePoint(first, geocodedWaypoints[0])
+    const lastIsPlace = samePoint(last, geocodedWaypoints[geocodedWaypoints.length - 1])
+    const drawMorning = firstIsPlace || !!bookendHotels.morningIsSleptHere
+    const drawEvening = lastIsPlace || !!bookendHotels.eveningIsOvernight
+    const bookends: RouteBookends = {
+      start: startPt && first && drawMorning ? [startPt, first] : undefined,
+      end: endPt && last && drawEvening ? [last, endPt] : undefined,
     }
-    const hotelPt = (a?: Accommodation) =>
-      a && a.place_lat != null && a.place_lng != null ? { lat: a.place_lat, lng: a.place_lng } : null
-    // Only draw a hotel bookend when the leg is real. A hotel → first-stop leg holds
-    // if the first stop is a place, or if you actually slept in that hotel last night;
-    // on a day-1 arrival the morning hotel is just a check-in fallback and the first
-    // waypoint is the transport's departure point, so [hotel → departure] is dropped
-    // (#1321). Symmetrically, [last-stop → hotel] is dropped when you leave on a transport
-    // in the evening and don't sleep in that hotel tonight.
-    const contributes = (e: Entry) => e.kind === 'place' || !!e.from || !!e.to
-    const firstStop = entries.find(contributes)
-    const lastStop = [...entries].reverse().find(contributes)
-    const drawMorning = firstStop?.kind === 'place' || !!bookends?.morningIsSleptHere
-    const drawEvening = lastStop?.kind === 'place' || !!bookends?.eveningIsOvernight
-    const runsWithHotel = withHotelBookends(
-      runs,
-      flatPts[0],
-      flatPts[flatPts.length - 1],
-      drawMorning ? hotelPt(bookends?.morning) : null,
-      drawEvening ? hotelPt(bookends?.evening) : null,
-    )
-
-    // Transfer day with no activities: you check out of one accommodation and into
-    // another, so there are no waypoints for withHotelBookends to attach a leg to.
-    // Draw the hotel → hotel transfer directly. Gated on both bookends being real
-    // (drawMorning/drawEvening already exclude the #1321 arrival fallback) and the two
-    // hotels being distinct, so an ordinary same-hotel rest day still draws nothing.
-    if (runsWithHotel.length === 0 && drawMorning && drawEvening) {
-      const m = hotelPt(bookends?.morning)
-      const e = hotelPt(bookends?.evening)
-      if (m && e && (m.lat !== e.lat || m.lng !== e.lng)) runsWithHotel.push([m, e])
+    if (!bookends.start && !bookends.end && startPt && endPt && drawMorning && drawEvening) {
+      if (startPt[0] !== endPt[0] || startPt[1] !== endPt[1]) bookends.start = [startPt, endPt]
     }
 
-    const straightLines = (): [number, number][][] =>
-      runsWithHotel.map(r => r.map(p => [p.lat, p.lng] as [number, number]))
+    return {
+      straightSegments: addAccommodationBookendsToStraightSegments(straightSegments, bookends),
+      geocodedWaypoints,
+      bookends,
+    }
+  }, [accommodations, optimizeFromAccommodation])
 
-    if (runsWithHotel.length === 0) { setRoute(null); setRouteSegments([]); return }
+  const buildStraightSegmentsForDay = useCallback(
+    (dayId: number): [number, number][][] => buildRouteInputForDay(dayId).straightSegments,
+    [buildRouteInputForDay],
+  )
 
-    // Draw straight lines immediately for snappiness, then upgrade to the real
-    // OSRM road geometry.
-    setRoute(straightLines())
+  const mapRouteLegs = useCallback((legs: DayRouteLeg[], polylineOffset = 0): RouteSegment[] => (legs || []).map(l => {
+    const routeMode = l.routeMode
+    const labels = formatRouteLegPill(t, {
+      kind: routeMode,
+      distanceM: l.distanceM,
+      durationS: l.durationS,
+      isApproximate: l.isApproximate,
+      waterwaySpeedKmh,
+    })
+    return {
+      polylineIndex: l.polylineIndex + polylineOffset,
+      waterwayText: labels.waterwayText ?? undefined,
+      routeMode,
+      mid: l.mid,
+      from: l.from,
+      to: l.to,
+      walkingText: labels.walkingText,
+      drivingText: labels.drivingText,
+      distanceM: l.distanceM,
+      durationS: l.durationS,
+      isApproximate: l.isApproximate,
+    }
+  }), [t, waterwaySpeedKmh])
+
+  const updateRouteForDay = useCallback(async (dayId: number | null) => {
+    if (routeAbortRef.current) routeAbortRef.current.abort()
+    if (!routeShown) {
+      setRoute(null)
+      setRouteSegments([])
+      setRouteInfo(null)
+      return
+    }
+    if (!dayId) {
+      const allDays = useTripStore.getState().days || []
+      const dayIds = allDays.map(d => d.id).filter((id): id is number => typeof id === 'number')
+      const straightByDay = dayIds.flatMap(id => buildStraightSegmentsForDay(id))
+      setRoute(straightByDay.length > 0 ? straightByDay : null)
+      if (!routeCalcEnabled) { setRouteSegments([]); return }
+
+      const currentTripId = useTripStore.getState().trip?.id
+      if (!currentTripId || dayIds.length === 0) { setRouteSegments([]); return }
+
+      const controller = new AbortController()
+      routeAbortRef.current = controller
+      try {
+        const result = await fetchAllDayRoutesParallel(currentTripId, dayIds, {
+          signal: controller.signal,
+          buildRouteInputForDay,
+          mapRouteLegs,
+        })
+        if ('aborted' in result) return
+        const { allSegments, allLegs } = result
+        if (controller.signal.aborted) return
+        setRoute(allSegments.length > 0 ? allSegments : null)
+        setRouteSegments(allLegs)
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (!controller.signal.aborted) setRouteSegments([])
+      }
+      return
+    }
+
+    const { straightSegments, geocodedWaypoints, bookends } = buildRouteInputForDay(dayId)
+
+    if (straightSegments.length === 0 && geocodedWaypoints.length < 2) {
+      setRoute(null)
+      setRouteSegments([])
+      return
+    }
+
+    setRoute(straightSegments.length > 0 ? straightSegments : null)
+
+    if (!routeCalcEnabled) { setRouteSegments([]); return }
+
+    const currentTripId = useTripStore.getState().trip?.id
+    if (!currentTripId) { setRouteSegments([]); return }
 
     const controller = new AbortController()
     routeAbortRef.current = controller
     try {
-      const polylines: [number, number][][] = []
-      const allLegs: RouteSegment[] = []
-      for (const run of runsWithHotel) {
-        try {
-          const r = await calculateRouteWithLegs(run, { signal: controller.signal, profile })
-          polylines.push(r.coordinates.length >= 2 ? r.coordinates : run.map(p => [p.lat, p.lng] as [number, number]))
-          allLegs.push(...r.legs)
-        } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') throw err
-          // OSRM failed for this run — fall back to a straight line, no times.
-          polylines.push(run.map(p => [p.lat, p.lng] as [number, number]))
-        }
+      const geo = await tripsApi.getDayRoute(currentTripId, dayId, { signal: controller.signal }) as {
+        segments: [number, number][][]
+        legs: DayRouteLeg[]
       }
-      if (!controller.signal.aborted) { setRoute(polylines); setRouteSegments(allLegs) }
+
+      if (controller.signal.aborted) return
+
+      if (geo?.segments?.length) {
+        const displayed = addAccommodationBookendsToServerRoute(geo.segments, geo.legs || [], bookends)
+        setRoute(displayed.segments)
+        setRouteSegments(mapRouteLegs(displayed.legs))
+      } else if (straightSegments.length > 0) {
+        setRoute(straightSegments)
+        setRouteSegments([])
+      }
     } catch (err: unknown) {
-      // Aborted (day changed) — newer call owns the state. Anything else: keep straight lines.
-      if (!(err instanceof Error) || err.name !== 'AbortError') setRouteSegments([])
+      if (err instanceof Error && err.name === 'AbortError') return
+      if (controller.signal.aborted) return
+      if (straightSegments.length > 0) setRoute(straightSegments)
+      setRouteSegments([])
     }
-  }, [enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+  }, [buildRouteInputForDay, buildStraightSegmentsForDay, mapRouteLegs, routeCalcEnabled, routeShown])
 
-  // Stable signature for transport reservations on the selected day — changes when a transport
-  // is added, removed, or repositioned, ensuring route recalc fires even on transport-only reorders.
   const transportSignature = useMemo(() => {
-    if (!selectedDayId) return ''
-    return reservationsForSignature
-      .filter(r => TRANSPORT_TYPES.includes(r.type))
-      .map(r => {
-        const pos = r.day_positions?.[selectedDayId] ?? r.day_positions?.[String(selectedDayId)] ?? r.day_plan_position
-        // Include endpoints so adding/moving a departure/arrival location re-routes.
-        const eps = (r.endpoints || []).map(e => `${e.role}@${e.lat ?? ''},${e.lng ?? ''}`).join(';')
-        return `${r.id}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${pos ?? ''}:${eps}`
+    const days = tripStore.days || []
+    const assignments = tripStore.assignments || {}
+    const serialize = (dayId: number) => {
+      const dayAssignmentIds = (assignments[String(dayId)] || []).map(a => a.id)
+      return getTransportForDay({
+        reservations: reservationsForSignature,
+        dayId,
+        dayAssignmentIds,
+        days,
       })
-      .sort()
-      .join('|')
-  }, [reservationsForSignature, selectedDayId])
+        .map(r => `${r.id}:${r.day_id ?? ''}:${r.end_day_id ?? ''}:${r.reservation_time ?? ''}:${JSON.stringify(r.day_positions ?? {})}:${JSON.stringify(r.endpoints ?? [])}`)
+        .sort()
+        .join('|')
+    }
+    if (!selectedDayId) {
+      return days.map(d => serialize(d.id)).join('||')
+    }
+    return serialize(selectedDayId)
+  }, [reservationsForSignature, selectedDayId, tripStore.assignments, tripStore.days])
 
-  // Recalculate when assignments or transport positions for the SELECTED day change
+  const assignmentRouteSig = useMemo(() => {
+    const list = (selectedDayId
+      ? (tripStore.assignments?.[String(selectedDayId)] || []).slice()
+      : Object.entries(tripStore.assignments || {})
+        .flatMap(([dayId, items]) => (items || []).map(a => ({ ...a, _dayId: dayId }))))
+      .sort((a, b) => a.order_index - b.order_index)
+    return list.map(a => `${(a as { _dayId?: string })._dayId ?? selectedDayId}:${a.id}:${a.order_index}:${a.route_mode_override ?? ''}:${a.place?.lat ?? ''}:${a.place?.lng ?? ''}`).join('|')
+  }, [tripStore.assignments, selectedDayId])
+
   const selectedDayAssignments = selectedDayId ? tripStore.assignments?.[String(selectedDayId)] : null
   useEffect(() => {
-    if (!selectedDayId) { setRoute(null); setRouteSegments([]); return }
     updateRouteForDay(selectedDayId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDayId, selectedDayAssignments, transportSignature, enabled, profile, accommodations, optimizeFromAccommodation, distanceUnit])
+  }, [selectedDayId, selectedDayAssignments, transportSignature, assignmentRouteSig, tripRouteDefaultSig, tripId, routeShown, accommodations, optimizeFromAccommodation, distanceUnit])
 
   return { route, routeSegments, routeInfo, setRoute, setRouteInfo, updateRouteForDay }
 }

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent, act } from '../../../tests/helpers/render';
 import userEvent from '@testing-library/user-event';
-import { buildUser, buildTrip, buildPlace, buildCategory, buildReservation } from '../../../tests/helpers/factories';
+import { buildUser, buildTrip, buildPlace, buildCategory, buildReservation, buildAssignment } from '../../../tests/helpers/factories';
 import { resetAllStores, seedStore } from '../../../tests/helpers/store';
 import { useAuthStore } from '../../store/authStore';
 import { useTripStore } from '../../store/tripStore';
@@ -13,6 +13,10 @@ vi.mock('../../api/client', async (importOriginal) => {
   return {
     ...actual,
     mapsApi: { details: vi.fn().mockResolvedValue({ place: null }) },
+    assignmentsApi: {
+      ...actual.assignmentsApi,
+      updateRouteMode: vi.fn().mockResolvedValue({ assignment: { id: 99, route_mode_override: 'waterway' } }),
+    },
   };
 });
 
@@ -42,7 +46,7 @@ beforeAll(() => {
 // ── Import component after mocks ──────────────────────────────────────────────
 
 import PlaceInspector from './PlaceInspector';
-import { mapsApi } from '../../api/client';
+import { mapsApi, assignmentsApi } from '../../api/client';
 
 // ── Shared fixtures ───────────────────────────────────────────────────────────
 
@@ -699,6 +703,31 @@ describe('PlaceInspector', () => {
     for (const el of notes) {
       expect(el.style.flexShrink).toBe('0');
     }
+  });
+
+  it('FE-PLANNER-INSPECTOR-037: route leg override select calls assignmentsApi.updateRouteMode', async () => {
+    const user = userEvent.setup();
+    const assignment = buildAssignment({ id: 99, day_id: 5, order_index: 0, place });
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
+    render(
+      <PlaceInspector
+        {...defaultProps}
+        tripId={1}
+        canEditRouteLeg
+        selectedDayId={5}
+        selectedAssignmentId={99}
+        assignments={{ '5': [assignment] }}
+      />,
+    );
+
+    const select = screen.getByRole('combobox');
+    expect(select).toBeInTheDocument();
+    await user.selectOptions(select, 'waterway');
+
+    await waitFor(() => {
+      expect(assignmentsApi.updateRouteMode).toHaveBeenCalledWith(1, 5, 99, { route_mode_override: 'waterway' });
+    });
   });
 
 });

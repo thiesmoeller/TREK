@@ -12,11 +12,29 @@ import { isStandardFamily, supportsCustom3d, wantsTerrain, addCustom3dBuildings,
 import { attachLocationMarker, type LocationMarkerHandle } from './locationMarkerMapbox'
 import { ReservationMapboxOverlay } from './reservationsMapbox'
 import { MAPBOX_DEFAULT_STYLE, styleForActiveProvider, basemapLanguage, type GlMapProvider } from './glProviders'
+import { POI_CATEGORY_BY_KEY, type Poi } from './poiCategories'
 import LocationButton from './LocationButton'
 import { useGeolocation } from '../../hooks/useGeolocation'
-import type { Place, Reservation } from '../../types'
-import { POI_CATEGORY_BY_KEY, type Poi } from './poiCategories'
-import { buildPlacePopupHtml, buildPoiPopupHtml } from './placePopup'
+import type { Place, Reservation, RouteSegment } from '../../types'
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function routePillInnerHtml(seg: RouteSegment): string {
+  const shell = (inner: string) =>
+    `<div style="display:flex;align-items:center;gap:5px;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);color:#fff;border-radius:99px;padding:3px 9px;font-size:9px;font-weight:600;white-space:nowrap;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,0.3);pointer-events:none;">${inner}</div>`
+  const waterText = seg.waterwayText ?? null
+  if (waterText) {
+    return shell(
+      `<span style="display:flex;align-items:center;gap:3px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13a2 2 0 0 1-4 0V5l4-3 4 3v8"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>${escapeHtml(waterText)}</span>`,
+    )
+  }
+  return shell(
+    `<span style="display:flex;align-items:center;gap:2px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l3-7"/><path d="M10 14l5-5"/><path d="M15 9l-4 7"/><path d="M18 18l-3-7"/></svg>${escapeHtml(seg.walkingText || '')}</span><span style="opacity:0.3">|</span>` +
+      `<span style="display:flex;align-items:center;gap:2px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2-4H7L5 10l-2.5 1.1C1.7 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>${escapeHtml(seg.drivingText || '')}</span>`,
+  )
+}
 
 function categoryIconSvg(iconName: string | null | undefined, size: number): string {
   const IconComponent = (iconName && CATEGORY_ICON_MAP[iconName]) || CATEGORY_ICON_MAP['MapPin']
@@ -25,12 +43,22 @@ function categoryIconSvg(iconName: string | null | undefined, size: number): str
   } catch { return '' }
 }
 
-interface RouteSegment {
-  mid: [number, number]
-  from: [number, number]
-  to: [number, number]
-  walkingText?: string
-  drivingText?: string
+function createPoiMarkerElement(category: string): HTMLDivElement {
+  const cat = POI_CATEGORY_BY_KEY[category]
+  const color = cat?.color || '#6b7280'
+  const svg = cat ? renderToStaticMarkup(createElement(cat.Icon, { size: 13, color: 'white', strokeWidth: 2.5 })) : ''
+  const el = document.createElement('div')
+  el.style.cssText = `width:26px;height:26px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 5px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;`
+  el.innerHTML = svg
+  return el
+}
+
+function buildPoiPopupHtml(poi: Poi): string {
+  const cat = POI_CATEGORY_BY_KEY[poi.category]
+  const title = escapeHtml(poi.name)
+  const label = escapeHtml(cat?.labelKey || poi.category)
+  const address = poi.address ? `<div style="font-size:11px;color:#6b7280;margin-top:2px;">${escapeHtml(poi.address)}</div>` : ''
+  return `<div style="font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;line-height:1.25;"><div style="font-weight:700;font-size:13px;color:#111827;">${title}</div><div style="font-size:11px;color:#2563eb;margin-top:2px;">${label}</div>${address}</div>`
 }
 
 interface Props {
@@ -64,7 +92,7 @@ interface Props {
 
 function createMarkerElement(place: Place & { category_color?: string; category_icon?: string }, photoUrl: string | null, orderNumbers: number[] | null, selected: boolean): HTMLDivElement {
   const size = selected ? 44 : 36
-  const borderColor = selected ? '#111827' : (place.category_color || 'white')
+  const borderColor = selected ? '#111827' : 'white'
   const borderWidth = selected ? 3 : 2.5
   const shadow = selected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
@@ -90,7 +118,7 @@ function createMarkerElement(place: Place & { category_color?: string; category_
       box-shadow:0 1px 4px rgba(0,0,0,0.18);
       display:flex;align-items:center;justify-content:center;
       font-size:${orderNumbers.length > 1 ? 7.5 : 9}px;font-weight:800;color:#111827;
-      font-family:var(--font-system);line-height:1;
+      font-family:-apple-system,system-ui,sans-serif;line-height:1;
       box-sizing:border-box;white-space:nowrap;
     ">${label}</span>`
   }
@@ -139,17 +167,6 @@ function createMarkerElement(place: Place & { category_color?: string; category_
   return wrap
 }
 
-// Small coloured pin for an OSM "explore" POI (matches the pill category colour).
-function createPoiMarkerElement(category: string): HTMLDivElement {
-  const cat = POI_CATEGORY_BY_KEY[category]
-  const color = cat?.color || '#6b7280'
-  const svg = cat ? renderToStaticMarkup(createElement(cat.Icon, { size: 13, color: 'white', strokeWidth: 2.5 })) : ''
-  const el = document.createElement('div')
-  el.style.cssText = 'width:26px;height:26px;cursor:pointer;'
-  el.innerHTML = `<div style="width:26px;height:26px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;box-sizing:border-box;">${svg}</div>`
-  return el
-}
-
 export function MapViewGL({
   places = [],
   dayPlaces = [],
@@ -196,6 +213,8 @@ export function MapViewGL({
   const mapRef = useRef<any | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersRef = useRef<Map<number, any>>(new Map())
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const routePillMarkersRef = useRef<any[]>([])
   const locationMarkerRef = useRef<LocationMarkerHandle | null>(null)
   const reservationOverlayRef = useRef<ReservationMapboxOverlay | null>(null)
   // Refs so the reservation overlay always sees the latest callback /
@@ -276,20 +295,16 @@ export function MapViewGL({
       // initial route source — kept around so updates can setData() cheaply
       if (!map.getSource('trip-route')) {
         map.addSource('trip-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-        // Apple-Maps style: a darker-blue casing under a bright-blue core, both
-        // rounded. Casing is added first so it sits beneath the core line.
-        map.addLayer({
-          id: 'trip-route-casing',
-          type: 'line',
-          source: 'trip-route',
-          paint: { 'line-color': '#0a5cc2', 'line-width': 8 },
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-        })
         map.addLayer({
           id: 'trip-route-line',
           type: 'line',
           source: 'trip-route',
-          paint: { 'line-color': '#0a84ff', 'line-width': 5 },
+          paint: {
+            'line-color': '#111827',
+            'line-width': 3,
+            'line-opacity': 0.9,
+            'line-dasharray': [2, 1.5],
+          },
           layout: { 'line-cap': 'round', 'line-join': 'round' },
         })
       }
@@ -382,8 +397,6 @@ export function MapViewGL({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const curAlt = (ll as any).alt ?? 0
         if (Math.abs(curAlt - alt) > 0.25) {
-          // mapbox-gl accepts a third altitude element at runtime, but its typings
-          // only model the 2-tuple form, so cast to LngLatLike.
           marker.setLngLat([ll.lng, ll.lat, alt] as unknown as mapboxgl.LngLatLike)
         }
       })
@@ -395,10 +408,14 @@ export function MapViewGL({
     return () => {
       canvas.removeEventListener('mousedown', onAuxDown)
       canvas.removeEventListener('auxclick', onAuxClick)
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+      poiMarkersRef.current.forEach(m => m.remove())
+      poiMarkersRef.current = []
+      popupRef.current?.remove()
+      popupRef.current = null
       markersRef.current.forEach(m => m.remove())
       markersRef.current.clear()
-      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null }
-      onMapReadyRef.current?.(null)
       if (reservationOverlayRef.current) {
         reservationOverlayRef.current.destroy()
         reservationOverlayRef.current = null
@@ -409,6 +426,7 @@ export function MapViewGL({
       }
       try { map.remove() } catch { /* noop */ }
       mapRef.current = null
+      onMapReadyRef.current?.(null)
       setMapReady(false)
     }
   }, [glProvider, glStyle, mapboxToken, enableMapbox3d, mapboxQuality]) // rebuild on provider/style changes only
@@ -482,10 +500,6 @@ export function MapViewGL({
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    // Markers are about to be rebuilt; drop any open hover popup first. A marker
-    // recreated under the pointer (e.g. when its photo streams in) never fires
-    // mouseleave, which would otherwise leave the popup orphaned on the map.
-    popupRef.current?.remove()
     const ids = new Set(places.map(p => p.id))
 
     markersRef.current.forEach((marker, id) => {
@@ -506,12 +520,6 @@ export function MapViewGL({
         ev.stopPropagation()
         onClickRefs.current.marker?.(place.id)
       })
-      el.addEventListener('mouseenter', () => {
-        popupRef.current?.setLngLat([place.lng, place.lat])
-          .setHTML(buildPlacePopupHtml(place as Place & { category_color?: string; category_icon?: string; category_name?: string }, photoUrl))
-          .addTo(map)
-      })
-      el.addEventListener('mouseleave', () => { popupRef.current?.remove() })
       // Recreate marker each time rather than patching internal state —
       // mapbox-gl's internal _element bookkeeping breaks under DOM swaps.
       const existing = markersRef.current.get(place.id)
@@ -560,9 +568,38 @@ export function MapViewGL({
       geometry: { type: 'LineString' as const, coordinates: seg.map(([lat, lng]) => [lng, lat]) },
     }))
     src.setData({ type: 'FeatureCollection', features })
-  }, [route, mapReady])
+  }, [route])
 
-  // Travel times now live in the day sidebar (per-segment connectors), not on the map.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const rebuild = () => {
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+      if (!routeSegments?.length) return
+      if (map.getZoom() < 12) return
+      for (const seg of routeSegments) {
+        if (!seg.mid || seg.mid.length < 2) continue
+        const wrap = document.createElement('div')
+        wrap.innerHTML = routePillInnerHtml(seg)
+        const el = wrap.firstElementChild as HTMLElement | null
+        if (!el) continue
+        try {
+          const m = new gl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([seg.mid[1], seg.mid[0]])
+            .addTo(map)
+          routePillMarkersRef.current.push(m)
+        } catch { /* noop */ }
+      }
+    }
+    rebuild()
+    map.on('zoomend', rebuild)
+    return () => {
+      map.off('zoomend', rebuild)
+      routePillMarkersRef.current.forEach(m => m.remove())
+      routePillMarkersRef.current = []
+    }
+  }, [routeSegments, mapReady])
 
   // Update GPX geometries
   useEffect(() => {
@@ -583,7 +620,7 @@ export function MapViewGL({
       } catch { return [] }
     })
     src.setData({ type: 'FeatureCollection', features })
-  }, [places, mapReady])
+  }, [places])
 
   // Reservation overlay — mirrors the Leaflet ReservationOverlay: great-
   // circle arcs for flights/cruises, straight lines for trains/cars,
@@ -666,10 +703,6 @@ export function MapViewGL({
         zoom: Math.max(map.getZoom(), 14),
         pitch: enableMapbox3d ? 45 : 0,
         duration: 400,
-        // Account for the side panels and the bottom inspector / day-detail panel
-        // so the selected pin lands in the centre of the *visible* map area rather
-        // than the geometric centre (where the bottom panel would cover it).
-        padding: paddingOpts,
       })
     } catch { /* noop */ }
   }, [selectedPlaceId, enableMapbox3d]) // eslint-disable-line react-hooks/exhaustive-deps

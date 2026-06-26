@@ -24,6 +24,8 @@ const mockDayNotesState = vi.hoisted(() => ({
   moveNote: vi.fn(),
 }))
 
+const mockToastInfo = vi.hoisted(() => vi.fn())
+
 // ── Module mocks ────────────────────────────────────────────────────────────
 
 vi.mock('../../api/client', async (importOriginal) => {
@@ -46,6 +48,7 @@ vi.mock('../PDF/TripPDF', () => ({ downloadTripPDF: vi.fn().mockResolvedValue(un
 
 vi.mock('../Map/RouteCalculator', () => ({
   calculateRoute: vi.fn().mockResolvedValue({ distanceText: '5 km', durationText: '1h', coordinates: [] }),
+  calculateRouteWithLegs: vi.fn().mockResolvedValue({ legs: [] }),
   generateGoogleMapsUrl: vi.fn().mockReturnValue('https://maps.google.com/...'),
   optimizeRoute: vi.fn().mockImplementation((places) => places),
 }))
@@ -61,6 +64,10 @@ vi.mock('../../services/photoService', () => ({
   onThumbReady: vi.fn(() => () => {}),
 }))
 
+vi.mock('../../hooks/useDayPlanRouteLegs', () => ({
+  useDayPlanRouteLegs: () => ({ routeLegs: {}, hotelLegs: {} }),
+}))
+
 vi.mock('../../hooks/useDayNotes', () => ({
   useDayNotes: () => mockDayNotesState,
 }))
@@ -70,7 +77,7 @@ vi.mock('../Weather/WeatherWidget', () => ({
 }))
 
 vi.mock('../shared/Toast', () => ({
-  useToast: () => ({ error: vi.fn(), success: vi.fn() }),
+  useToast: () => ({ error: vi.fn(), success: vi.fn(), info: mockToastInfo }),
 }))
 
 // ── Permissions mock ────────────────────────────────────────────────────────
@@ -568,6 +575,38 @@ describe('DayPlanSidebar', () => {
     const optimizeBtn = screen.getByRole('button', { name: /optimize/i })
     await user.click(optimizeBtn)
     await waitFor(() => expect(onReorder).toHaveBeenCalledWith(10, expect.any(Array)))
+  })
+
+  it('FE-PLANNER-DAYPLAN-038b: optimize is blocked on waterway-effective days', async () => {
+    const user = userEvent.setup()
+    const onReorder = vi.fn().mockResolvedValue(undefined)
+    mockToastInfo.mockClear()
+    const places = [
+      buildPlace({ id: 1, name: 'A', lat: 48.85, lng: 2.35 }),
+      buildPlace({ id: 2, name: 'B', lat: 48.86, lng: 2.36 }),
+      buildPlace({ id: 3, name: 'C', lat: 48.87, lng: 2.37 }),
+    ]
+    const day = buildDay({ id: 10, date: '2025-06-01', title: 'Day 1' })
+    const assigns = {
+      '10': [
+        buildAssignment({ id: 1, day_id: 10, order_index: 0, place: places[0] }),
+        buildAssignment({ id: 2, day_id: 10, order_index: 1, place: places[1] }),
+        buildAssignment({ id: 3, day_id: 10, order_index: 2, place: places[2] }),
+      ],
+    }
+    render(<DayPlanSidebar {...makeDefaultProps({
+      days: [day],
+      places,
+      assignments: assigns,
+      selectedDayId: 10,
+      onReorder,
+      trip: buildTrip({ id: 1, currency: 'EUR', default_route_mode: 'waterway' }),
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: /optimize/i }))
+
+    expect(onReorder).not.toHaveBeenCalled()
+    expect(mockToastInfo).toHaveBeenCalled()
   })
 
   it('FE-PLANNER-DAYPLAN-039: Google Maps button calls window.open', async () => {

@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks'
 import { X, Clock, MapPin, ExternalLink, Phone, Euro, Edit2, Trash2, Plus, Minus, ChevronDown, ChevronUp, FileText, Upload, File, FileImage, Star, Navigation, Users, Mountain, TrendingUp } from 'lucide-react'
 import PlaceAvatar from '../shared/PlaceAvatar'
 import { mapsApi } from '../../api/client'
+import { PlaceInspectorRouteLegOverride } from './PlaceInspectorRouteLegOverride'
 import { useSettingsStore } from '../../store/settingsStore'
 import { getCategoryIcon } from '../shared/categoryIcons'
 import { useToast } from '../shared/Toast'
@@ -113,13 +114,16 @@ interface PlaceInspectorProps {
   onUpdatePlace: (placeId: number, data: Partial<Place>) => void
   leftWidth?: number
   rightWidth?: number
+  /** When set with `canEditRouteLeg`, user can override how the leg *from this stop to the next* is routed. */
+  tripId?: number | null
+  canEditRouteLeg?: boolean
 }
 
 export default function PlaceInspector({
   place, categories, days, selectedDayId, selectedAssignmentId, assignments, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files, onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
-  leftWidth = 0, rightWidth = 0,
+  leftWidth = 0, rightWidth = 0, tripId = null, canEditRouteLeg = false,
 }: PlaceInspectorProps) {
   const { t, locale, language } = useTranslation()
   const toast = useToast()
@@ -271,6 +275,14 @@ export default function PlaceInspector({
             <div className="collab-note-md bg-surface-hover text-content-muted" style={{ borderRadius: 10, overflow: 'hidden', flexShrink: 0, fontSize: 'calc(12px * var(--fs-scale-body, 1))', lineHeight: '1.5', padding: '8px 12px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
               <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{place.notes}</Markdown>
             </div>
+          )}
+
+          {tripId != null && canEditRouteLeg && selectedDayId != null && assignmentInDay && (
+            <PlaceInspectorRouteLegOverride
+              tripId={tripId}
+              selectedDayId={selectedDayId}
+              assignment={assignmentInDay}
+            />
           )}
 
           {/* Reservation + Participants — side by side */}

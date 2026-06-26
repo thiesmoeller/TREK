@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback, createElement, memo } from 'react'
 import DOM from 'react-dom'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, useMap, Tooltip } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Circle, Popup, useMap, Tooltip } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
@@ -18,11 +18,11 @@ function categoryIconSvg(iconName: string | null | undefined, size: number): str
     return renderToStaticMarkup(createElement(IconComponent, { size, color: 'white', strokeWidth: 2.5 }))
   } catch { return '' }
 }
-import type { Place } from '../../types'
+import type { Place, RouteSegment } from '../../types'
+import { useTranslation } from '../../i18n'
 
-// Fix default marker icons for vite. `_getIconUrl` is a Leaflet-internal field
-// not present in the public typings, so narrow to delete it.
-delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl
+// Fix default marker icons for vite
+delete (L.Icon.Default.prototype as typeof L.Icon.Default.prototype & { _getIconUrl?: unknown })._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
@@ -45,7 +45,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
   const cached = iconCache.get(cacheKey)
   if (cached) return cached
   const size = isSelected ? 44 : 36
-  const borderColor = isSelected ? '#111827' : (place.category_color || 'white')
+  const borderColor = isSelected ? '#111827' : 'white'
   const borderWidth = isSelected ? 3 : 2.5
   const shadow = isSelected
     ? '0 0 0 3px rgba(17,24,39,0.25), 0 4px 14px rgba(0,0,0,0.3)'
@@ -65,7 +65,7 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
       box-shadow:0 1px 4px rgba(0,0,0,0.18);
       display:flex;align-items:center;justify-content:center;
       font-size:${orderNumbers.length > 1 ? 7.5 : 9}px;font-weight:800;color:#111827;
-      font-family:var(--font-system);line-height:1;
+      font-family:-apple-system,system-ui,sans-serif;line-height:1;
       box-sizing:border-box;white-space:nowrap;
     ">${label}</span>`
   }
@@ -119,8 +119,6 @@ function createPlaceIcon(place, orderNumbers, isSelected) {
   return fallbackIcon
 }
 
-// Small coloured pin for an OSM "explore" POI — distinct from the photo-circle
-// markers of planned places; the colour matches its pill category.
 const poiIconCache = new Map<string, L.DivIcon>()
 function createPoiIcon(category: string) {
   const cached = poiIconCache.get(category)
@@ -139,8 +137,6 @@ function createPoiIcon(category: string) {
   return icon
 }
 
-// Emits the current viewport bbox on pan/zoom so the POI-explore pill can fetch
-// OSM places for the visible area.
 function ViewportController({ onViewportChange }: { onViewportChange?: (b: { south: number; west: number; north: number; east: number }) => void }) {
   const map = useMap()
   useEffect(() => {
@@ -149,10 +145,9 @@ function ViewportController({ onViewportChange }: { onViewportChange?: (b: { sou
       const b = map.getBounds()
       onViewportChange({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() })
     }
-    map.whenReady(emit) // ensure the first bbox is captured once the map is laid out
+    emit()
     map.on('moveend', emit)
-    map.on('zoomend', emit)
-    return () => { map.off('moveend', emit); map.off('zoomend', emit) }
+    return () => { map.off('moveend', emit) }
   }, [map, onViewportChange])
   return null
 }
@@ -170,21 +165,10 @@ function SelectionController({ places, selectedPlaceId, dayPlaces, paddingOpts }
 
   useEffect(() => {
     if (selectedPlaceId && selectedPlaceId !== prev.current) {
-      // Pan to the selected place without changing zoom. Offset the centre by the
-      // side-panel + bottom-inspector padding so the pin lands in the middle of the
-      // *visible* map area rather than the geometric centre (where the bottom panel
-      // would cover it). Reuses the same paddingOpts the fit-bounds path uses.
+      // Pan to the selected place without changing zoom
       const selected = places.find(p => p.id === selectedPlaceId)
-      if (selected?.lat != null && selected?.lng != null) {
-        const latlng: [number, number] = [selected.lat, selected.lng]
-        const tl = paddingOpts.paddingTopLeft as [number, number] | undefined
-        const br = paddingOpts.paddingBottomRight as [number, number] | undefined
-        if (tl && br && typeof map.project === 'function' && typeof map.unproject === 'function') {
-          const point = map.project(latlng).add([(br[0] - tl[0]) / 2, (br[1] - tl[1]) / 2])
-          map.panTo(map.unproject(point), { animate: true })
-        } else {
-          map.panTo(latlng, { animate: true })
-        }
+      if (selected?.lat && selected?.lng) {
+        map.panTo([selected.lat, selected.lng], { animate: true })
       }
     }
     prev.current = selectedPlaceId
@@ -298,7 +282,63 @@ function MapContextMenuHandler({ onContextMenu }: { onContextMenu: ((e: L.Leafle
   return null
 }
 
-// Travel times are shown in the day sidebar (per-segment connectors), not on the map.
+// ── Route travel time label ──
+interface RouteLabelProps {
+  midpoint: [number, number]
+  walkingText: string
+  drivingText: string
+  waterwayText?: string | null
+}
+
+function RouteLabel({ midpoint, walkingText, drivingText, waterwayText }: RouteLabelProps) {
+  const map = useMap()
+  const [visible, setVisible] = useState(map ? map.getZoom() >= 12 : false)
+
+  useEffect(() => {
+    if (!map) return
+    const check = () => setVisible(map.getZoom() >= 12)
+    check()
+    map.on('zoomend', check)
+    return () => { map.off('zoomend', check) }
+  }, [map])
+
+  if (!visible || !midpoint) return null
+
+  const waterwayLineBlock = waterwayText
+    ? `<span style="display:flex;align-items:center;gap:3px">${'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 13a2 2 0 0 1-4 0V5l4-3 4 3v8"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>'}${escAttr(waterwayText)}</span>`
+    : ''
+  const walkDriveBlock = !waterwayText
+    ? `<span style="display:flex;align-items:center;gap:2px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M7 21l3-7"/><path d="M10 14l5-5"/><path d="M15 9l-4 7"/><path d="M18 18l-3-7"/></svg>
+        ${escAttr(walkingText)}
+      </span>
+      <span style="opacity:0.3">|</span>
+      <span style="display:flex;align-items:center;gap:2px">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18 10l-2-4H7L5 10l-2.5 1.1C1.7 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        ${escAttr(drivingText)}
+      </span>`
+    : ''
+
+  const icon = L.divIcon({
+    className: 'route-info-pill',
+    html: `<div style="
+      display:flex;align-items:center;gap:5px;
+      background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
+      color:#fff;border-radius:99px;padding:3px 9px;
+      font-size:9px;font-weight:600;white-space:nowrap;
+      font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+      box-shadow:0 2px 12px rgba(0,0,0,0.3);
+      pointer-events:none;
+      position:relative;left:-50%;top:-50%;
+    ">
+      ${waterwayLineBlock || walkDriveBlock}
+    </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+
+  return <Marker position={midpoint} icon={icon} interactive={false} zIndexOffset={2000} />
+}
 
 // Module-level photo cache shared with PlaceAvatar
 import { getCached, isLoading, fetchPhoto, onThumbReady, getAllThumbs } from '../../services/photoService'
@@ -410,7 +450,7 @@ export const MapView = memo(function MapView({
   places = [],
   dayPlaces = [],
   route = null,
-  routeSegments = [],
+  routeSegments = [] as RouteSegment[],
   selectedPlaceId = null,
   onMarkerClick,
   onMapClick,
@@ -432,6 +472,7 @@ export const MapView = memo(function MapView({
   onPoiClick,
   onViewportChange,
 }: any) {
+  const { t } = useTranslation()
   const poiMarkers = useMemo(() => (pois as Poi[]).map((poi: Poi) => (
     <Marker
       key={`poi-${poi.osm_id}`}
@@ -449,14 +490,14 @@ export const MapView = memo(function MapView({
     return reservations.filter((r: Reservation) => set.has(r.id))
   }, [reservations, visibleConnectionIds])
   // Dynamic padding: account for sidebars + bottom inspector + day detail panel
-  const paddingOpts = useMemo((): L.FitBoundsOptions => {
+  const paddingOpts = useMemo(() => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
-    if (isMobile) return { padding: [40, 20] }
+    if (isMobile) return { padding: [40, 20] as L.PointTuple }
     const top = 60
     const bottom = hasInspector ? 320 : hasDayDetail ? 280 : 60
     const left = leftWidth + 40
     const right = rightWidth + 40
-    return { paddingTopLeft: [left, top], paddingBottomRight: [right, bottom] }
+    return { paddingTopLeft: [left, top] as L.PointTuple, paddingBottomRight: [right, bottom] as L.PointTuple }
   }, [leftWidth, rightWidth, hasInspector, hasDayDetail])
 
   // Hover state for the single tooltip overlay (replaces per-marker <Tooltip>)
@@ -609,7 +650,8 @@ export const MapView = memo(function MapView({
       center={center}
       zoom={zoom}
       zoomControl={false}
-      className="w-full h-full bg-[#e5e7eb]"
+      className="w-full h-full"
+      style={{ background: '#e5e7eb' }}
     >
       <TileLayer
         url={tileUrl}
@@ -626,7 +668,6 @@ export const MapView = memo(function MapView({
       <SelectionController places={places} selectedPlaceId={selectedPlaceId} dayPlaces={dayPlaces} paddingOpts={paddingOpts} />
       <MapClickHandler onClick={onMapClick} />
       <MapContextMenuHandler onContextMenu={onMapContextMenu} />
-      <ViewportController onViewportChange={onViewportChange} />
       <LeafletLocationLayer position={userPosition} mode={trackingMode} />
 
       <MarkerClusterGroup
@@ -644,22 +685,37 @@ export const MapView = memo(function MapView({
         {markers}
       </MarkerClusterGroup>
 
-      {/* Apple-Maps style: darker-blue casing under a bright-blue core, rounded. */}
-      {route && route.length > 0 && route.flatMap((seg, i) => seg.length > 1 ? [
-        <Polyline
-          key={`${i}-casing`}
-          positions={seg}
-          pathOptions={{ color: '#0a5cc2', weight: 8, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
-        />,
-        <Polyline
-          key={`${i}-core`}
-          positions={seg}
-          pathOptions={{ color: '#0a84ff', weight: 5, opacity: 1, lineCap: 'round', lineJoin: 'round' }}
-        />,
-      ] : [])}
+      {route && route.length > 0 && (
+        <>
+          {route.map((seg, i) => seg.length > 1 && (
+            <Polyline
+              key={i}
+              positions={seg}
+              color="#111827"
+              weight={3}
+              opacity={0.9}
+              dashArray="6, 5"
+            />
+          ))}
+          {route.map((seg, i) => seg.length > 1 && routeSegments
+            .filter((s) => (s.polylineIndex ?? 0) === i)
+            .map((s, j) => (
+              <RouteLabel
+                key={`${i}-${j}`}
+                midpoint={s.mid}
+                walkingText={s.walkingText}
+                drivingText={s.drivingText}
+                waterwayText={s.waterwayText}
+              />
+            )))}
+        </>
+      )}
 
       {/* GPX imported route geometries */}
       {gpxPolylines}
+
+      <ViewportController onViewportChange={onViewportChange} />
+      {poiMarkers}
 
       <ReservationOverlay
         reservations={visibleReservations}
@@ -667,8 +723,6 @@ export const MapView = memo(function MapView({
         showStats={showReservationStats}
         onEndpointClick={onReservationClick}
       />
-
-      {poiMarkers}
     </MapContainer>
     {isMobile && <LocationButton
       mode={trackingMode}
@@ -689,7 +743,7 @@ export const MapView = memo(function MapView({
         borderRadius: 8,
         boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
         padding: '6px 10px',
-        fontFamily: "var(--font-system)",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
         maxWidth: 220,
         whiteSpace: 'nowrap',
       }}>

@@ -116,6 +116,7 @@ export interface Settings {
   distance_unit?: DistanceUnit
   time_format: string
   show_place_description: boolean
+  route_calculation?: boolean
   blur_booking_codes?: boolean
   map_booking_labels?: boolean
   map_poi_pill_enabled?: boolean
@@ -153,12 +154,18 @@ export interface RouteSegment {
   mid: [number, number]
   from: [number, number]
   to: [number, number]
-  distance: number
-  duration: number
   walkingText: string
   drivingText: string
-  distanceText: string
+  /** Index into the `route` polyline array when multiple transport-split segments exist */
+  polylineIndex?: number
+  /** Waterway summary pill (when set, map shows a single label) */
+  waterwayText?: string | null
+  routeMode?: 'waterway' | 'walking' | 'driving'
+  distanceM?: number
+  durationS?: number
+  distanceText?: string
   durationText?: string
+  isApproximate?: boolean
 }
 
 export interface RouteWithLegs {
@@ -336,9 +343,19 @@ export function getApiErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
-// MergedItem used in day notes hook
-export interface MergedItem {
-  type: 'assignment' | 'note' | 'place' | 'transport'
-  sortKey: number
-  data: Assignment | DayNote | Reservation
+export type MergedTransportItem = Reservation & {
+  __leg?: {
+    index: number
+    total: number
+    from: string | null
+    to: string | null
+    airline: string | null
+    flight_number: string | null
+  }
 }
+
+// MergedItem used in day plan timeline (runtime data is full domain entities)
+export type MergedItem =
+  | { type: 'place'; sortKey: number; data: Assignment }
+  | { type: 'note'; sortKey: number; data: DayNote }
+  | { type: 'transport'; sortKey: number; data: MergedTransportItem }
