@@ -1,5 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { HttpException } from '@nestjs/common';
+
+const { computeMixedDayRoute, assignmentDayTripExists } = vi.hoisted(() => ({
+  computeMixedDayRoute: vi.fn(),
+  assignmentDayTripExists: vi.fn(),
+}));
+
+vi.mock('../../../src/services/assignmentService', () => ({
+  dayExists: assignmentDayTripExists,
+}));
+
+vi.mock('../../../src/services/mixedDayRouteService', () => ({
+  computeMixedDayRoute,
+}));
+
 import { DaysController } from '../../../src/nest/days/days.controller';
 import { DayNotesController } from '../../../src/nest/days/day-notes.controller';
 import { DayReorderError } from '../../../src/services/dayService';
@@ -113,6 +127,107 @@ describe('DaysController (parity with the legacy /api/trips/:tripId/days route)'
     expect(thrown(() => new DaysController(daysSvc({ getDay: vi.fn().mockReturnValue(undefined) } as Partial<DaysService>)).remove(user, '5', '9'))).toEqual({ status: 404, body: { error: 'Day not found' } });
     const svc = daysSvc({ getDay: vi.fn().mockReturnValue({ id: 9 }), remove: vi.fn() } as Partial<DaysService>);
     expect(new DaysController(svc).remove(user, '5', '9')).toEqual({ success: true });
+  });
+
+  describe('GET /:id/route', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      assignmentDayTripExists.mockReturnValue(true);
+    });
+
+    it('404 when trip not accessible', async () => {
+      const svc = daysSvc({ verifyTripAccess: vi.fn().mockReturnValue(undefined) });
+      await expect(new DaysController(svc).dayRoute(user, '5', '9')).rejects.toMatchObject({
+        response: { error: 'Trip not found' },
+        status: 404,
+      });
+      expect(computeMixedDayRoute).not.toHaveBeenCalled();
+    });
+
+    it('404 when day not found in trip', async () => {
+      assignmentDayTripExists.mockReturnValue(false);
+      await expect(new DaysController(daysSvc()).dayRoute(user, '5', '9')).rejects.toMatchObject({
+        response: { error: 'Day not found' },
+        status: 404,
+      });
+      expect(computeMixedDayRoute).not.toHaveBeenCalled();
+    });
+
+    it('returns mixed route segments and structured legs on success', async () => {
+      const route = {
+        segments: [[[48.85, 2.35], [51.5, -0.12]]],
+        legs: [{
+          polylineIndex: 0,
+          mid: [50.18, 1.11],
+          from: [48.85, 2.35] as [number, number],
+          to: [51.5, -0.12] as [number, number],
+          distanceM: 340_000,
+          durationS: 7200,
+          isApproximate: false,
+          routeMode: 'walking',
+        }],
+      };
+      computeMixedDayRoute.mockResolvedValue(route);
+      const result = await new DaysController(daysSvc()).dayRoute(user, '5', '9');
+      expect(result).toEqual(route);
+      for (const leg of result.legs) {
+        expect(leg).not.toHaveProperty('walkingText');
+        expect(leg).not.toHaveProperty('drivingText');
+        expect(leg).not.toHaveProperty('waterwayText');
+      }
+      expect(computeMixedDayRoute).toHaveBeenCalledWith(5, 9, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    });
+
+    it('maps computeMixedDayRoute trip_not_found to 404', async () => {
+      computeMixedDayRoute.mockRejectedValue(new Error('trip_not_found'));
+      await expect(new DaysController(daysSvc()).dayRoute(user, '5', '9')).rejects.toMatchObject({
+        response: { error: 'trip_not_found' },
+        status: 404,
+      });
+    });
+
+    it('maps route timeout cancellation to 504', async () => {
+      vi.useFakeTimers();
+      try {
+        computeMixedDayRoute.mockImplementation(async (_tripId: number, _dayId: number, opts: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true });
+        }));
+
+        const pending = new DaysController(daysSvc()).dayRoute(user, '5', '9');
+        const assertion = expect(pending).rejects.toMatchObject({
+          response: { error: 'route_timeout' },
+          status: 504,
+        });
+        await vi.advanceTimersByTimeAsync(72_000);
+
+        await assertion;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('aborts route calculation when the request closes', async () => {
+      let closeHandler: (() => void) | undefined;
+      const req = {
+        on: vi.fn((event: string, handler: () => void) => {
+          if (event === 'close') closeHandler = handler;
+        }),
+        off: vi.fn(),
+      };
+      computeMixedDayRoute.mockImplementation(async (_tripId: number, _dayId: number, opts: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+        opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true });
+      }));
+
+      const pending = new DaysController(daysSvc()).dayRoute(user, '5', '9', req as never);
+      const assertion = expect(pending).rejects.toMatchObject({
+        response: { error: 'route_cancelled' },
+        status: 499,
+      });
+      closeHandler?.();
+
+      await assertion;
+      expect(req.off).toHaveBeenCalledWith('close', closeHandler);
+    });
   });
 });
 

@@ -46,11 +46,27 @@ vi.mock('../../src/config', () => ({
 }));
 vi.mock('../../src/websocket', () => ({ broadcast: vi.fn(), broadcastToUser: vi.fn() }));
 
+const routingMocks = vi.hoisted(() => ({
+  osrmLegRoute: vi.fn().mockResolvedValue({
+    coords: [[48.8566, 2.3522], [48.8600, 2.3600]],
+    distanceM: 1200,
+    durationS: 900,
+  }),
+  routeWaterwayLeg: vi.fn(),
+}));
+
+vi.mock('../../src/services/routing/osrmRouting', () => ({
+  osrmLegRoute: (...args: unknown[]) => routingMocks.osrmLegRoute(...args),
+}));
+vi.mock('../../src/services/routing/waterwayRouting', () => ({
+  routeWaterwayLeg: (...args: unknown[]) => routingMocks.routeWaterwayLeg(...args),
+}));
+
 import { buildApp } from '../../src/bootstrap';
 import { createTables } from '../../src/db/schema';
 import { runMigrations } from '../../src/db/migrations';
 import { resetTestDb, resetRateLimits } from '../helpers/test-db';
-import { createUser, createTrip, createDay, createPlace, addTripMember } from '../helpers/factories';
+import { createUser, createTrip, createDay, createPlace, addTripMember, createDayAssignment } from '../helpers/factories';
 import { authCookie } from '../helpers/auth';
 
 let nestApp: INestApplication;
@@ -557,5 +573,86 @@ describe('Accommodations', () => {
       'SELECT id FROM budget_items WHERE trip_id = ?'
     ).get(trip.id);
     expect(budgetAfter).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Day route (DAY-ROUTE-001 through DAY-ROUTE-004)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Day route', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    routingMocks.osrmLegRoute.mockResolvedValue({
+      coords: [[48.8566, 2.3522], [48.8600, 2.3600]],
+      distanceM: 1200,
+      durationS: 900,
+    });
+  });
+
+  function seedRoutedDay(userId: number) {
+    const trip = createTrip(testDb, userId, { start_date: '2026-09-01', end_date: '2026-09-02' });
+    const day = testDb.prepare('SELECT id FROM days WHERE trip_id = ? ORDER BY day_number ASC LIMIT 1').get(trip.id) as { id: number };
+    const p1 = createPlace(testDb, trip.id, { name: 'A', lat: 48.8566, lng: 2.3522 });
+    const p2 = createPlace(testDb, trip.id, { name: 'B', lat: 48.8600, lng: 2.3600 });
+    createDayAssignment(testDb, day.id, p1.id, { order_index: 0 });
+    createDayAssignment(testDb, day.id, p2.id, { order_index: 1 });
+    return { trip, dayId: day.id };
+  }
+
+  it('DAY-ROUTE-001 — unauthenticated GET /route returns 401', async () => {
+    const { user } = createUser(testDb);
+    const { trip, dayId } = seedRoutedDay(user.id);
+
+    const res = await request(app).get(`/api/trips/${trip.id}/days/${dayId}/route`);
+    expect(res.status).toBe(401);
+  });
+
+  it('DAY-ROUTE-002 — non-member cannot fetch day route (404)', async () => {
+    const { user: owner } = createUser(testDb);
+    const { user: stranger } = createUser(testDb);
+    const { trip, dayId } = seedRoutedDay(owner.id);
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/days/${dayId}/route`)
+      .set('Cookie', authCookie(stranger.id));
+
+    expect(res.status).toBe(404);
+  });
+
+  it('DAY-ROUTE-003 — unknown day returns 404', async () => {
+    const { user } = createUser(testDb);
+    const trip = createTrip(testDb, user.id, { start_date: '2026-09-01', end_date: '2026-09-02' });
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/days/99999/route`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Day not found');
+  });
+
+  it('DAY-ROUTE-004 — member gets structured segments and legs without English labels', async () => {
+    const { user } = createUser(testDb);
+    const { trip, dayId } = seedRoutedDay(user.id);
+
+    const res = await request(app)
+      .get(`/api/trips/${trip.id}/days/${dayId}/route`)
+      .set('Cookie', authCookie(user.id));
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.segments)).toBe(true);
+    expect(res.body.segments.length).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.legs)).toBe(true);
+    expect(res.body.legs).toHaveLength(1);
+    expect(res.body.legs[0]).toMatchObject({
+      routeMode: 'walking',
+      distanceM: 1200,
+      durationS: 900,
+      isApproximate: false,
+    });
+    expect(res.body.legs[0]).not.toHaveProperty('walkingText');
+    expect(res.body.legs[0]).not.toHaveProperty('drivingText');
+    expect(routingMocks.osrmLegRoute).toHaveBeenCalled();
   });
 });

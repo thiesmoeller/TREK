@@ -232,6 +232,7 @@ export async function fetchOverpassDetails(osmType: string, osmId: string): Prom
   } catch { return null; }
 }
 
+
 // ── Overpass POI search (by category within a viewport bbox) ─────────────────
 // Powers the "explore places on the map" pill. OSM-ONLY by design — this never
 // calls Google, even when a Google key is configured.
@@ -465,6 +466,29 @@ export async function searchOverpassPois(
   if (POI_CACHE.size >= POI_CACHE_MAX) POI_CACHE.delete(POI_CACHE.keys().next().value as string);
   POI_CACHE.set(cacheKey, { at: Date.now(), value });
   return value;
+}
+
+/** Raw Overpass JSON interpreter request (caller supplies full QL query with timeout). */
+export async function fetchOverpassInterpreter(
+  query: string,
+  timeoutSec = 25,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<{ elements?: unknown[] } | null> {
+  const q = query.includes('[timeout:') ? query : `[out:json][timeout:${timeoutSec}];\n${query}`;
+  try {
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(q)}`,
+      signal,
+    });
+    if (!res.ok) return null;
+    return await res.json() as { elements?: unknown[] };
+  } catch (err) {
+    if (signal?.aborted) throw signal.reason ?? err;
+    if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
+    return null;
+  }
 }
 
 // ── Opening hours parsing ────────────────────────────────────────────────────

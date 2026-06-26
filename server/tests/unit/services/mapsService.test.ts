@@ -78,6 +78,7 @@ import {
   resolveOverpassEndpoints,
   resolveOverpassTimeoutMs,
   searchOverpassPois,
+  fetchOverpassInterpreter,
 } from '../../../src/services/mapsService';
 
 afterEach(() => {
@@ -538,6 +539,36 @@ describe('fetchOverpassDetails (fetch stubbed)', () => {
     const { fetchOverpassDetails } = await import('../../../src/services/mapsService');
     const result = await fetchOverpassDetails('node', '1');
     expect(result).toBeNull();
+  });
+});
+
+describe('fetchOverpassInterpreter (fetch stubbed)', () => {
+  it('MAPS-034c: passes AbortSignal to the Overpass fetch call', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ elements: [] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchOverpassInterpreter('node(1);out;', 12, { signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://overpass-api.de/api/interpreter',
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it('MAPS-034d: rethrows cancellation instead of returning null', async () => {
+    const controller = new AbortController();
+    const abortErr = new DOMException('aborted', 'AbortError');
+    const fetchMock = vi.fn(async () => {
+      throw abortErr;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    controller.abort(abortErr);
+
+    await expect(fetchOverpassInterpreter('node(1);out;', 12, { signal: controller.signal })).rejects.toBe(abortErr);
   });
 });
 
