@@ -77,6 +77,9 @@ const dashboard: TranslationStrings = {
   'dashboard.tripTitlePlaceholder': 'e.g. Summer in Japan',
   'dashboard.tripDescription': 'Description',
   'dashboard.tripDescriptionPlaceholder': 'What is this trip about?',
+  'dashboard.defaultRouteLegKind': 'Default route between stops',
+  'dashboard.routeLegDefaultHint':
+    'Used from each stop to the next unless you override the leg on that stop.',
   'dashboard.startDate': 'Start Date',
   'dashboard.endDate': 'End Date',
   'dashboard.dayCount': 'Number of Days',

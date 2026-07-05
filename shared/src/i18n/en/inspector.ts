@@ -20,6 +20,12 @@ const inspector: TranslationStrings = {
   'inspector.addRes': 'Reservation',
   'inspector.editRes': 'Edit Reservation',
   'inspector.participants': 'Participants',
+  'inspector.routeLegLabel': 'Route from this stop to the next',
+  'inspector.routeLegInheritHelp':
+    '"Trip default" uses the mode set on the trip form. Override here for this stop only.',
+  'inspector.routeLegRouteCalcHint':
+    'Turn on route calculation in Settings → Map to draw routes on the map.',
+  'inspector.routeLegInherit': 'Trip default',
   'inspector.trackStats': 'Track Stats',
 };
 export default inspector;

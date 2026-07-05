@@ -84,12 +84,31 @@ export interface CalendarSource {
   getEvents(userId: number, start: Date, end: Date): Promise<CalendarEvent[]>;
 }
 
+export interface RouteLegRequest {
+  mode: string;
+  from: { lat: number; lng: number };
+  to: { lat: number; lng: number };
+  legKey: string;
+  tripId: number;
+  modeOptions?: Record<string, unknown>;
+}
+export interface RouteLegResult {
+  coords: [number, number][];
+  distanceM: number;
+  durationS?: number;
+  isApproximate?: boolean;
+}
+export interface RouteProvider {
+  modes(): string[];
+  routeLeg(req: RouteLegRequest): Promise<RouteLegResult>;
+}
+
 export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   jobs?: PluginJob[];
-  hooks?: { photoProvider?: PhotoProvider; calendarSource?: CalendarSource };
+  hooks?: { photoProvider?: PhotoProvider; calendarSource?: CalendarSource; routeProvider?: RouteProvider };
 }
 
 /** Define a plugin. Gives you types; the returned object is what TREK loads. */

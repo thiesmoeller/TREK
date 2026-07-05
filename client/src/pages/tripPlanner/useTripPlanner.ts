@@ -17,6 +17,7 @@ import { useBackgroundTasksStore } from '../../store/backgroundTasksStore'
 import { useAuthStore } from '../../store/authStore'
 import { useResizablePanels } from '../../hooks/useResizablePanels'
 import { useTripWebSocket } from '../../hooks/useTripWebSocket'
+import { useRouteModes } from '../../hooks/useRouteModes'
 import { useRouteCalculation } from '../../hooks/useRouteCalculation'
 import { usePlaceSelection } from '../../hooks/usePlaceSelection'
 import { usePlannerHistory } from '../../hooks/usePlannerHistory'
@@ -193,6 +194,12 @@ export function useTripPlanner() {
   // (driving/walking) is per-session and selects which travel time the connectors show.
   const [routeShown, setRouteShown] = useState(false)
   const [routeProfile, setRouteProfile] = useState<'driving' | 'walking'>('driving')
+  const { modes: routeModes, loadRouteModes } = useRouteModes()
+  useEffect(() => { void loadRouteModes() }, [loadRouteModes])
+  useEffect(() => {
+    const def = trip?.default_route_mode
+    if (def === 'walking' || def === 'driving') setRouteProfile(def)
+  }, [trip?.id, trip?.default_route_mode])
   const [fitKey, setFitKey] = useState<number>(0)
   const initialFitTripId = useRef<number | null>(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<'left' | 'right' | null>(null)
@@ -866,7 +873,7 @@ export function useTripPlanner() {
     transportModalDayId, setTransportModalDayId,
     transportModalAutomated, setTransportModalAutomated, transitPrefill, setTransitPrefill, transitJourney, setTransitJourney,
     reservationPrefill, transportPrefill, importReviewActive, startImportReview, advanceImportReview,
-    routeShown, setRouteShown, routeProfile, setRouteProfile, fitKey, setFitKey,
+    routeShown, setRouteShown, routeProfile, setRouteProfile, routeModes, fitKey, setFitKey,
     mobileSidebarOpen, setMobileSidebarOpen, mobilePlanScrollTopRef, mobilePlacesScrollTopRef,
     deletePlaceId, setDeletePlaceId, deletePlaceIds, setDeletePlaceIds,
     visibleConnections, setVisibleConnections, toggleConnection, mapTransportDetail, setMapTransportDetail,

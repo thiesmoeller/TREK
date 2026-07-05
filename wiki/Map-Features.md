@@ -30,7 +30,12 @@ When zoomed out, nearby markers are grouped into clusters. Clicking a cluster zo
 
 ## Route lines
 
-When you have a day selected, a dark dashed line connects consecutive places in that day's order.
+When you have a day selected, route lines connect consecutive places. Leg geometry is
+calculated on the server (`GET /api/trips/:tripId/days/:dayId/route`) using the trip's
+**route mode** (walking, driving, or an active plugin mode such as waterway). See
+[[Day-plan Route Modes|Day-Plan-Route-Modes]].
+
+When **Route calculation** is off in settings, straight-line previews are shown instead.
 
 ## Route time pills
 

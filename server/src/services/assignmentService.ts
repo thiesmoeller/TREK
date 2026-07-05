@@ -1,6 +1,11 @@
 import { db } from '../db/database';
 import { loadTagsByPlaceIds, loadParticipantsByAssignmentIds, formatAssignmentWithPlace } from './queryHelpers';
 import { AssignmentRow, DayAssignment } from '../types';
+import {
+  validateAssignmentRouteModeOverride,
+  type RouteModeRegistry,
+} from './routeModeValidation';
+import { ValidationError } from './tripService';
 
 export function getAssignmentWithPlace(assignmentId: number | bigint) {
   const a = db.prepare(`
@@ -40,6 +45,7 @@ export function getAssignmentWithPlace(assignmentId: number | bigint) {
     notes: a.notes,
     assignment_time: a.assignment_time ?? null,
     assignment_end_time: a.assignment_end_time ?? null,
+    route_mode_override: (a as { route_mode_override?: string | null }).route_mode_override ?? null,
     participants,
     created_at: a.created_at,
     place: {
@@ -198,6 +204,31 @@ export function updateTime(id: string | number, placeTime: string | null, endTim
   }
 
   return getAssignmentWithPlace(Number(id));
+}
+
+function normalizeStoredRouteModeOverride(override: string | null): string | null {
+  if (override === null) return null;
+  const normalized = override.trim().toLowerCase();
+  if (!normalized || normalized === 'inherit') return 'inherit';
+  return normalized;
+}
+
+export function updateRouteModeOverride(
+  assignmentId: string | number,
+  routeModeOverride: string | null,
+  registry?: RouteModeRegistry,
+) {
+  if (registry) {
+    validateAssignmentRouteModeOverride(routeModeOverride, registry);
+  } else if (routeModeOverride !== null && routeModeOverride !== undefined) {
+    const normalized = routeModeOverride.trim().toLowerCase();
+    if (normalized && normalized !== 'inherit') {
+      throw new ValidationError(`Unknown route mode: ${normalized}`);
+    }
+  }
+  const stored = normalizeStoredRouteModeOverride(routeModeOverride);
+  db.prepare('UPDATE day_assignments SET route_mode_override = ? WHERE id = ?').run(stored, assignmentId);
+  return getAssignmentWithPlace(Number(assignmentId));
 }
 
 export function setParticipants(assignmentId: string | number, userIds: number[]) {

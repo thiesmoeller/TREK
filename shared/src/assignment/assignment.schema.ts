@@ -40,6 +40,7 @@ export const assignmentSchema = z.object({
   assignment_time: z.string().nullable().optional(),
   assignment_end_time: z.string().nullable().optional(),
   participants: z.array(assignmentParticipantSchema).optional(),
+  route_mode_override: z.string().nullable().optional(),
   created_at: z.string().optional(),
   place: assignmentPlaceSchema,
 });
@@ -67,6 +68,13 @@ export const assignmentTimeRequestSchema = z.object({
   end_time: z.string().nullable().optional(),
 });
 export type AssignmentTimeRequest = z.infer<typeof assignmentTimeRequestSchema>;
+
+export const assignmentRouteModeOverrideRequestSchema = z.object({
+  route_mode_override: z.union([z.string(), z.null()]),
+});
+export type AssignmentRouteModeOverrideRequest = z.infer<
+  typeof assignmentRouteModeOverrideRequestSchema
+>;
 
 export const assignmentParticipantsRequestSchema = z.object({
   user_ids: z.array(z.number()),

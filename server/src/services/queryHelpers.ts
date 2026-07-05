@@ -61,6 +61,7 @@ function formatAssignmentWithPlace(a: AssignmentRow, tags: Partial<Tag>[], parti
     notes: a.notes,
     assignment_time: a.assignment_time ?? null,
     assignment_end_time: a.assignment_end_time ?? null,
+    route_mode_override: (a as { route_mode_override?: string | null }).route_mode_override ?? null,
     participants: participants || [],
     created_at: a.created_at,
     place: {

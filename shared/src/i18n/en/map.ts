@@ -4,6 +4,8 @@ const map: TranslationStrings = {
   'map.connections': 'Connections',
   'map.showConnections': 'Show booking routes',
   'map.hideConnections': 'Hide booking routes',
+  'map.route.distanceDuration': '{distance} · {duration}',
+  'map.route.fallbackWaterway': '{distance} · {duration} ({speed} km/h waterway, approximate)',
   'poi.searchThisArea': 'Search this area',
   'poi.cat.restaurants': 'Restaurants',
   'poi.cat.cafes': 'Cafés',

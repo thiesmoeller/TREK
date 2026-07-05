@@ -12,6 +12,10 @@ export interface PluginRouteInfo {
   auth: boolean;
 }
 
+export interface PluginHooksInfo {
+  routeProvider: boolean;
+}
+
 /**
  * Owns the lifecycle of every running plugin child (#plugins, M1): spawn on
  * activate, route RPC between the child and its capability host, watch
@@ -49,6 +53,7 @@ interface Supervised {
   lastRss: number; // last reported resident set size (bytes)
   routes: PluginRouteInfo[];
   jobs: string[];
+  hooks: PluginHooksInfo;
   pending: Map<string, Pending>; // host→child invokes awaiting a response
   invocations: Map<string, number | undefined>; // reqId -> acting user of that invoke (undefined = no user, e.g. a job)
   activation?: { resolve: () => void; reject: (e: Error) => void };
@@ -109,6 +114,7 @@ export class PluginSupervisor {
       lastRss: 0,
       routes: [],
       jobs: [],
+      hooks: { routeProvider: false },
       pending: new Map(),
       invocations: new Map(),
     };
@@ -163,21 +169,25 @@ export class PluginSupervisor {
   routesOf(id: string): PluginRouteInfo[] {
     return this.running.get(id)?.routes ?? [];
   }
+  hooksOf(id: string): PluginHooksInfo {
+    return this.running.get(id)?.hooks ?? { routeProvider: false };
+  }
 
   /**
-   * Send a host→child request (invoke a route or job) and await its response.
+   * Send a host→child request (invoke a route, job, or hook) and await its response.
    * `actingUserId` binds the authenticated user of this invocation on the HOST
    * side: any trip read the child makes while handling it is membership-checked
    * against THIS user, never against an id the plugin passes. A job carries no
    * user (undefined) and therefore cannot read user-scoped data.
+   * When `signal` aborts, the in-flight invoke is cancelled on the child.
    */
   invoke(
     id: string,
     method: string,
     params: Record<string, unknown>,
-    opts: { timeoutMs?: number; actingUserId?: number } = {},
+    opts: { timeoutMs?: number; actingUserId?: number; signal?: AbortSignal } = {},
   ): Promise<unknown> {
-    const { timeoutMs = 30_000, actingUserId } = opts;
+    const { timeoutMs = 30_000, actingUserId, signal } = opts;
     const sup = this.running.get(id);
     if (!sup || sup.status !== 'active' || !sup.child) {
       return Promise.reject(new Error(`plugin ${id} is not active`));
@@ -190,12 +200,70 @@ export class PluginSupervisor {
         reject(new Error('plugin invoke timed out'));
       }, timeoutMs);
       timer.unref?.();
-      sup.pending.set(reqId, { resolve, reject, timer });
+
+      const rejectInvoke = (err: Error) => {
+        if (!sup.pending.has(reqId)) return;
+        sup.pending.delete(reqId);
+        sup.invocations.delete(reqId);
+        clearTimeout(timer);
+        reject(err);
+      };
+
+      let onAbort: (() => void) | undefined;
+      if (signal) {
+        onAbort = () => {
+          this.cancelInvoke(id, reqId);
+          rejectInvoke(new Error('cancelled'));
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      sup.pending.set(reqId, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          if (onAbort) signal?.removeEventListener('abort', onAbort);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          if (onAbort) signal?.removeEventListener('abort', onAbort);
+          reject(e);
+        },
+        timer,
+      });
       // The child echoes this reqId as `_inv` on its trip reads; the host resolves
       // the acting user from here, so the plugin cannot name an arbitrary user.
       sup.invocations.set(reqId, actingUserId);
       sup.child!.send({ k: 'req', id: reqId, method, params: { ...params, _inv: reqId } } satisfies Envelope);
     });
+  }
+
+  /** Invoke a plugin hook method (e.g. routeProvider.routeLeg) via invoke.hook. */
+  invokeHook(
+    id: string,
+    hook: string,
+    method: string,
+    args: unknown[],
+    opts: { timeoutMs?: number; actingUserId?: number; signal?: AbortSignal } = {},
+  ): Promise<unknown> {
+    return this.invoke(id, 'invoke.hook', { hook, method, args }, opts);
+  }
+
+  /** Ask the child to abort an in-flight host→child invoke. */
+  cancelInvoke(id: string, targetReqId: string): void {
+    const sup = this.running.get(id);
+    if (!sup?.child) return;
+    const cancelId = randomUUID();
+    sup.child.send({ k: 'req', id: cancelId, method: 'invoke.cancel', params: { targetId: targetReqId } } satisfies Envelope);
+  }
+
+  /** Alias for cancelInvoke — sends a cancel envelope to the child. */
+  cancel(id: string, reqId: string): void {
+    this.cancelInvoke(id, reqId);
   }
 
   async shutdownAll(): Promise<void> {
@@ -280,9 +348,10 @@ export class PluginSupervisor {
         }
         case 'loaded': {
           sup.lastBeat = Date.now();
-          const d = msg.data as { routes?: PluginRouteInfo[]; jobs?: string[] };
+          const d = msg.data as { routes?: PluginRouteInfo[]; jobs?: string[]; hooks?: Partial<PluginHooksInfo> };
           sup.routes = d.routes ?? [];
           sup.jobs = d.jobs ?? [];
+          sup.hooks = { routeProvider: !!d.hooks?.routeProvider };
           this.clearActivationTimer(sup);
           this.setStatus(sup, 'active');
           sup.activation?.resolve();

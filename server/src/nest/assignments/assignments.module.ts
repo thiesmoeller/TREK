@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DayAssignmentsController, AssignmentOpsController } from './assignments.controller';
 import { AssignmentsService } from './assignments.service';
+import { PluginsModule } from '../plugins/plugins.module';
 
 /**
  * Assignments domain (S7 — Phase 2 trip sub-domain). The day-assignments mount
@@ -8,6 +9,7 @@ import { AssignmentsService } from './assignments.service';
  * the /api/trips/:tripId/assignments prefix.
  */
 @Module({
+  imports: [PluginsModule],
   controllers: [DayAssignmentsController, AssignmentOpsController],
   providers: [AssignmentsService],
 })

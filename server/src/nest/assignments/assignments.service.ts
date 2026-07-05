@@ -5,6 +5,7 @@ import { checkPermission } from '../../services/permissions';
 import type { User } from '../../types';
 import * as svc from '../../services/assignmentService';
 import { onPlaceCreated } from '../../services/journeyService';
+import { RouteProviderRegistryService } from '../plugins/route-provider-registry.service';
 
 type Trip = { user_id: number };
 
@@ -16,6 +17,7 @@ type Trip = { user_id: number };
  */
 @Injectable()
 export class AssignmentsService {
+  constructor(private readonly routeRegistry: RouteProviderRegistryService) {}
   verifyTripAccess(tripId: string, userId: number) {
     return canAccessTrip(Number(tripId), userId) as Trip | null | undefined;
   }
@@ -75,6 +77,10 @@ export class AssignmentsService {
 
   updateTime(id: string, placeTime: unknown, endTime: unknown) {
     return svc.updateTime(id, placeTime as never, endTime as never);
+  }
+
+  updateRouteModeOverride(id: string, routeModeOverride: string | null) {
+    return svc.updateRouteModeOverride(id, routeModeOverride, this.routeRegistry);
   }
 
   setParticipants(id: string, userIds: number[]) {

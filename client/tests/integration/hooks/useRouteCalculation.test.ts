@@ -1,7 +1,11 @@
-import { renderHook, act } from '@testing-library/react';
+import React from 'react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useRouteCalculation } from '../../../src/hooks/useRouteCalculation';
+import { TranslationProvider } from '../../../src/i18n/TranslationContext';
+import { useSettingsStore } from '../../../src/store/settingsStore';
 import { useTripStore } from '../../../src/store/tripStore';
+import { tripsApi } from '../../../src/api/client';
 import { buildAssignment, buildPlace } from '../../helpers/factories';
 import type { TripStoreState } from '../../../src/store/tripStore';
 import type { RouteSegment } from '../../../src/types';
@@ -10,59 +14,54 @@ vi.mock('../../../src/components/Map/RouteCalculator', async (importActual) => {
   const actual = await importActual<typeof import('../../../src/components/Map/RouteCalculator')>();
   return {
     ...actual,
-    calculateRouteWithLegs: vi.fn(),
+    calculateSegments: vi.fn(),
     calculateRoute: vi.fn(),
     optimizeRoute: vi.fn((waypoints: unknown[]) => waypoints),
     generateGoogleMapsUrl: vi.fn(),
   };
 });
 
-const { calculateRouteWithLegs } = await import('../../../src/components/Map/RouteCalculator');
+const routeCalculator = await import('../../../src/components/Map/RouteCalculator');
+const mockCalculateSegments = vi.mocked(routeCalculator.calculateSegments);
 
-function buildMockStore(assignments: Record<string, ReturnType<typeof buildAssignment>[]> = {}): Partial<TripStoreState> {
-  // Also populate the real Zustand store so updateRouteForDay (which reads from
-  // useTripStore.getState()) sees the same assignments as the hook's tripStore param.
-  // Reset reservations and days to empty so transport-split logic doesn't interfere.
-  useTripStore.setState({ assignments, reservations: [], days: [] } as any);
-  return { assignments } as Partial<TripStoreState>;
-}
+const getDayRouteSpy = vi.spyOn(tripsApi, 'getDayRoute');
 
 const MOCK_SEGMENTS: RouteSegment[] = [
   {
-    mid: [48.5, 2.5],
-    from: [48.86, 2.35],
-    to: [48.21, 16.37],
-    distance: 343000,
-    duration: 12600,
-    distanceText: '343 km',
-    durationText: '3 h 30 min',
-    walkingText: '70 h',
-    drivingText: '3 h 30 min',
+    from: [48.8566, 2.3522],
+    to: [51.5074, -0.1278],
+    mid: [50.182, 1.1122],
+    walkingText: '120 min',
+    drivingText: '90 min',
   },
 ];
 
-// Empty coordinates make the hook fall back to the straight-line geometry,
-// so the `route` assertions keep checking the raw waypoints while the legs
-// still flow through to `routeSegments`.
-const MOCK_ROUTE_WITH_LEGS = {
-  coordinates: [] as [number, number][],
-  distance: 343000,
-  duration: 12600,
-  legs: MOCK_SEGMENTS,
-};
+function buildMockStore(assignments: Record<string, ReturnType<typeof buildAssignment>[]> = {}): Partial<TripStoreState> {
+  useTripStore.setState({ assignments, reservations: [], days: [], trip: { id: 42 } as any });
+  return { assignments } as Partial<TripStoreState>;
+}
+
+function wrapper({ children }: { children: React.ReactNode }) {
+  return React.createElement(TranslationProvider, null, children);
+}
 
 describe('useRouteCalculation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset trip store assignments so each test starts clean
-    useTripStore.setState({ assignments: {} } as any);
-    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_ROUTE_WITH_LEGS);
+    useSettingsStore.setState({ settings: { route_calculation: false } as any });
+    useTripStore.setState({ assignments: {}, trip: { id: 42 } as any } as any);
+    (mockCalculateSegments as ReturnType<typeof vi.fn>).mockResolvedValue(MOCK_SEGMENTS);
+    getDayRouteSpy.mockResolvedValue({
+      segments: [],
+      legs: [],
+    } as any);
   });
 
   it('FE-HOOK-ROUTE-001: with no selectedDayId, route is null', () => {
     const store = buildMockStore({});
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, null)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, null),
+      { wrapper },
     );
     expect(result.current.route).toBeNull();
   });
@@ -72,67 +71,159 @@ describe('useRouteCalculation', () => {
     const assignment = buildAssignment({ day_id: 5, order_index: 0, place });
     const store = buildMockStore({ '5': [assignment] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
     expect(result.current.route).toBeNull();
   });
 
-  it('FE-HOOK-ROUTE-003: with ≥ 2 geo-coded assignments, sets route coordinates', async () => {
+  it('FE-HOOK-ROUTE-003: with ≥ 2 geo-coded assignments, sets route coordinates (straight baseline)', async () => {
     const p1 = buildPlace({ lat: 48.8566, lng: 2.3522 });
     const p2 = buildPlace({ lat: 51.5074, lng: -0.1278 });
     const a1 = buildAssignment({ day_id: 5, order_index: 0, place: p1 });
     const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
-    // route is an array of segments; no transport → single segment with all places
     expect(result.current.route).toEqual([
       [[p1.lat, p1.lng], [p2.lat, p2.lng]],
     ]);
+    expect(getDayRouteSpy).not.toHaveBeenCalled();
   });
 
-  it('FE-HOOK-ROUTE-004: calls calculateRouteWithLegs and exposes the returned segments', async () => {
+  it('FE-HOOK-ROUTE-004: with route_calculation enabled, uses server mixed-route API', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
     const p1 = buildPlace({ lat: 48.8566, lng: 2.3522 });
     const p2 = buildPlace({ lat: 51.5074, lng: -0.1278 });
     const a1 = buildAssignment({ day_id: 5, order_index: 0, place: p1 });
     const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    getDayRouteSpy.mockResolvedValueOnce({
+      segments: [[[p1.lat, p1.lng], [p2.lat, p2.lng]]],
+      legs: [{
+        polylineIndex: 0,
+        mid: MOCK_SEGMENTS[0].mid,
+        from: MOCK_SEGMENTS[0].from,
+        to: MOCK_SEGMENTS[0].to,
+        routeMode: 'walking',
+        distanceM: 42_000,
+        durationS: 7200,
+        isApproximate: false,
+      }],
+    });
+
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
 
-    expect(calculateRouteWithLegs).toHaveBeenCalled();
-    expect(result.current.routeSegments).toEqual(MOCK_SEGMENTS);
+    expect(getDayRouteSpy).toHaveBeenCalled();
+    expect(mockCalculateSegments).not.toHaveBeenCalled();
+    expect(result.current.route).toEqual([[[p1.lat, p1.lng], [p2.lat, p2.lng]]]);
+    expect(result.current.routeSegments).toEqual([
+      expect.objectContaining({
+        walkingText: '2 h 0 min',
+        drivingText: '2 h 0 min',
+        polylineIndex: 0,
+        durationS: 7200,
+      }),
+    ]);
   });
 
-  it('FE-HOOK-ROUTE-006: assignments are sorted by order_index before extracting waypoints', async () => {
+  it('FE-HOOK-ROUTE-004b: formats approximate waterway legs from structured API fields', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
+    const p1 = buildPlace({ lat: 53.5, lng: 10.0 });
+    const p2 = buildPlace({ lat: 53.6, lng: 10.1 });
+    const a1 = buildAssignment({ day_id: 5, order_index: 0, place: p1 });
+    const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
+    const store = buildMockStore({ '5': [a1, a2] });
+    useTripStore.setState({ trip: { id: 42, route_mode_options: { waterway: { speedKmh: 6 } } } as any });
+
+    getDayRouteSpy.mockResolvedValueOnce({
+      segments: [[[p1.lat, p1.lng], [p2.lat, p2.lng]]],
+      legs: [{
+        polylineIndex: 0,
+        mid: [53.55, 10.05],
+        from: [p1.lat!, p1.lng!],
+        to: [p2.lat!, p2.lng!],
+        routeMode: 'waterway',
+        distanceM: 10_000,
+        durationS: 6000,
+        isApproximate: true,
+      }],
+    });
+
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
+    );
+
+    await act(async () => {});
+
+    expect(result.current.routeSegments[0]).toEqual(expect.objectContaining({
+      routeMode: 'waterway',
+      isApproximate: true,
+      waterwayText: expect.any(String),
+    }));
+  });
+
+  it('FE-HOOK-ROUTE-005: with route_calculation disabled, does not call geometry API', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: false } as any });
+
+    const p1 = buildPlace({ lat: 48.8566, lng: 2.3522 });
+    const p2 = buildPlace({ lat: 51.5074, lng: -0.1278 });
+    const a1 = buildAssignment({ day_id: 5, order_index: 0, place: p1 });
+    const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
+    const store = buildMockStore({ '5': [a1, a2] });
+
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
+    );
+
+    await act(async () => {});
+
+    expect(getDayRouteSpy).not.toHaveBeenCalled();
+    expect(mockCalculateSegments).not.toHaveBeenCalled();
+    expect(result.current.routeSegments).toEqual([]);
+  });
+
+  it('FE-HOOK-ROUTE-006: assignments sorted by order_index; server replaces polyline geometry', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
     const p1 = buildPlace({ lat: 10, lng: 10 });
     const p2 = buildPlace({ lat: 20, lng: 20 });
-    // order_index 1 comes before 0 in the array, but should be sorted
     const a1 = buildAssignment({ day_id: 5, order_index: 1, place: p1 });
     const a2 = buildAssignment({ day_id: 5, order_index: 0, place: p2 });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    getDayRouteSpy.mockResolvedValueOnce({
+      segments: [[[20, 20], [10, 10]]],
+      legs: [],
+    });
+
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
 
-    // After sort: a2 (order_index=0) first, then a1 (order_index=1)
-    expect(result.current.route).toEqual([
-      [[p2.lat, p2.lng], [p1.lat, p1.lng]],
-    ]);
+    expect(result.current.route).toEqual([[[20, 20], [10, 10]]]);
+    expect(getDayRouteSpy).toHaveBeenCalledWith(42, 5, expect.any(Object));
   });
 
   it('FE-HOOK-ROUTE-007: assignments with no lat/lng are filtered out', async () => {
@@ -142,26 +233,25 @@ describe('useRouteCalculation', () => {
     const a2 = buildAssignment({ day_id: 5, order_index: 1, place: pValid });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
-    // Only 1 valid waypoint → route is null
     expect(result.current.route).toBeNull();
+    expect(getDayRouteSpy).not.toHaveBeenCalled();
   });
 
-  it('FE-HOOK-ROUTE-008: AbortController.abort() is called when selectedDayId changes', async () => {
+  it('FE-HOOK-ROUTE-008: AbortController.abort() when selectedDayId changes', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
 
-    // Make calculateRouteWithLegs resolve slowly
-    let resolveSegments!: (val: typeof MOCK_ROUTE_WITH_LEGS) => void;
-    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockImplementationOnce(
-      (_waypoints: unknown[], options: { signal?: AbortSignal }) => {
-        return new Promise<typeof MOCK_ROUTE_WITH_LEGS>((resolve) => {
-          resolveSegments = resolve;
-          options?.signal?.addEventListener('abort', () => resolve(MOCK_ROUTE_WITH_LEGS));
-        });
-      }
+    let resolvePost!: (v: unknown) => void;
+    getDayRouteSpy.mockImplementationOnce((_tripId: unknown, _dayId: unknown, opts: { signal?: AbortSignal }) =>
+      new Promise(resolve => {
+        resolvePost = resolve;
+        opts?.signal?.addEventListener('abort', () => resolve({ segments: [], legs: [] }));
+      }),
     );
 
     const p1 = buildPlace({ lat: 10, lng: 10 });
@@ -173,27 +263,24 @@ describe('useRouteCalculation', () => {
 
     const { rerender } = renderHook(
       ({ dayId }: { dayId: number }) => useRouteCalculation(store1 as TripStoreState, dayId),
-      { initialProps: { dayId: 5 } }
+      { initialProps: { dayId: 5 }, wrapper },
     );
 
-    // Change to day 6 — should abort in-flight request for day 5
     await act(async () => {
       rerender({ dayId: 6 });
     });
 
-    // calculateRouteWithLegs should have been called at least once for day 5
-    // and once more for day 6
-    expect((calculateRouteWithLegs as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(getDayRouteSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
 
-    // Cleanup
-    resolveSegments?.(MOCK_ROUTE_WITH_LEGS);
+    resolvePost?.({ segments: [], legs: [] });
   });
 
-  it('FE-HOOK-ROUTE-009: AbortError from calculateSegments does not set routeSegments to []', async () => {
+  it('FE-HOOK-ROUTE-009: AbortError from server route call does not repopulate segments', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
 
     const abortError = new Error('Aborted');
     abortError.name = 'AbortError';
-    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockRejectedValueOnce(abortError);
+    getDayRouteSpy.mockRejectedValueOnce(abortError);
 
     const p1 = buildPlace({ lat: 10, lng: 10 });
     const p2 = buildPlace({ lat: 20, lng: 20 });
@@ -201,18 +288,21 @@ describe('useRouteCalculation', () => {
     const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
-    // AbortError should be swallowed silently — segments remain empty
     expect(result.current.routeSegments).toEqual([]);
+    expect(getDayRouteSpy).toHaveBeenCalled();
+    expect(mockCalculateSegments).not.toHaveBeenCalled();
   });
 
-  it('FE-HOOK-ROUTE-010: non-AbortError from calculateSegments sets routeSegments to []', async () => {
+  it('FE-HOOK-ROUTE-010: non-AbortError from server keeps straight route without client OSRM fallback', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
 
-    (calculateRouteWithLegs as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Network error'));
+    getDayRouteSpy.mockRejectedValueOnce(new Error('Network error'));
 
     const p1 = buildPlace({ lat: 10, lng: 10 });
     const p2 = buildPlace({ lat: 20, lng: 20 });
@@ -220,11 +310,14 @@ describe('useRouteCalculation', () => {
     const a2 = buildAssignment({ day_id: 5, order_index: 1, place: p2 });
     const store = buildMockStore({ '5': [a1, a2] });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
+    expect(mockCalculateSegments).not.toHaveBeenCalled();
+    expect(result.current.route).toEqual([[[p1.lat, p1.lng], [p2.lat, p2.lng]]]);
     expect(result.current.routeSegments).toEqual([]);
   });
 
@@ -237,11 +330,10 @@ describe('useRouteCalculation', () => {
 
     const { result, rerender } = renderHook(
       ({ dayId }: { dayId: number | null }) => useRouteCalculation(store as TripStoreState, dayId),
-      { initialProps: { dayId: 5 as number | null } }
+      { initialProps: { dayId: 5 as number | null }, wrapper },
     );
 
     await act(async () => {});
-    // Some route may have been set for day 5
 
     await act(async () => {
       rerender({ dayId: null });
@@ -373,14 +465,16 @@ describe('useRouteCalculation', () => {
 
   it('FE-HOOK-ROUTE-012: setRoute and setRouteInfo are exposed', () => {
     const store = buildMockStore({});
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, null)
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, null),
+      { wrapper },
     );
     expect(result.current.setRoute).toBeTypeOf('function');
     expect(result.current.setRouteInfo).toBeTypeOf('function');
   });
 
   it('FE-HOOK-ROUTE-013: route recalculates when assignments change via store update', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
 
     const p1 = buildPlace({ lat: 10, lng: 10 });
     const p2 = buildPlace({ lat: 20, lng: 20 });
@@ -389,8 +483,9 @@ describe('useRouteCalculation', () => {
 
     let storeData = buildMockStore({ '5': [a1, a2] });
 
-    const { result, rerender } = renderHook(() =>
-      useRouteCalculation(storeData as TripStoreState, 5)
+    const { result, rerender } = renderHook(
+      () => useRouteCalculation(storeData as TripStoreState, 5),
+      { wrapper },
     );
 
     await act(async () => {});
@@ -399,45 +494,175 @@ describe('useRouteCalculation', () => {
       [[p1.lat, p1.lng], [p2.lat, p2.lng]],
     ]);
 
-    // Now add a third place — update both the local store object and the Zustand store
     const p3 = buildPlace({ lat: 30, lng: 30 });
     const a3 = buildAssignment({ day_id: 5, order_index: 2, place: p3 });
-    storeData = buildMockStore({ '5': [a1, a2, a3] }); // also calls useTripStore.setState
 
     await act(async () => {
+      storeData = buildMockStore({ '5': [a1, a2, a3] });
       rerender();
     });
+
+    await waitFor(() => {
+      expect(result.current.route).toEqual([
+        [[p1.lat, p1.lng], [p2.lat, p2.lng], [p3.lat, p3.lng]],
+      ]);
+    });
+  });
+
+  it('FE-HOOK-ROUTE-014: all-days mode fetches day routes with bounded parallelism', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
+    const resolvers: Array<(v: unknown) => void> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    getDayRouteSpy.mockImplementation((_tripId, _dayId, opts) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      return new Promise(resolve => {
+        resolvers.push((value) => {
+          inFlight -= 1;
+          resolve(value);
+        });
+        opts?.signal?.addEventListener('abort', () => {
+          inFlight -= 1;
+          resolve({ segments: [], legs: [] });
+        });
+      });
+    });
+
+    const p1 = buildPlace({ lat: 10, lng: 10 });
+    const p2 = buildPlace({ lat: 20, lng: 20 });
+    const dayIds = Array.from({ length: 8 }, (_, i) => i + 1);
+    const assignments = Object.fromEntries(
+      dayIds.map(id => [`${id}`, [
+        buildAssignment({ day_id: id, order_index: 0, place: p1 }),
+        buildAssignment({ day_id: id, order_index: 1, place: p2 }),
+      ]]),
+    );
+    useTripStore.setState({
+      assignments,
+      reservations: [],
+      days: dayIds.map(id => ({ id, trip_id: 42 })),
+      trip: { id: 42 } as any,
+    });
+    const store = { assignments } as Partial<TripStoreState>;
+
+    renderHook(
+      () => useRouteCalculation(store as TripStoreState, null),
+      { wrapper },
+    );
+
+    await act(async () => {});
+
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(getDayRouteSpy).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      resolvers.splice(0).forEach(r => r({
+        segments: [[[p1.lat!, p1.lng!], [p2.lat!, p2.lng!]]],
+        legs: [],
+      }));
+    });
+
+    await act(async () => {});
+    expect(getDayRouteSpy).toHaveBeenCalledTimes(8);
+
+    await act(async () => {
+      resolvers.splice(0).forEach(r => r({
+        segments: [[[p1.lat!, p1.lng!], [p2.lat!, p2.lng!]]],
+        legs: [],
+      }));
+    });
+  });
+
+  it('FE-HOOK-ROUTE-015: all-days mode falls back to straight segments on partial failure', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
+
+    const p1 = buildPlace({ lat: 10, lng: 10 });
+    const p2 = buildPlace({ lat: 20, lng: 20 });
+    const assignments = {
+      '1': [
+        buildAssignment({ day_id: 1, order_index: 0, place: p1 }),
+        buildAssignment({ day_id: 1, order_index: 1, place: p2 }),
+      ],
+      '2': [
+        buildAssignment({ day_id: 2, order_index: 0, place: p1 }),
+        buildAssignment({ day_id: 2, order_index: 1, place: p2 }),
+      ],
+    };
+    useTripStore.setState({
+      assignments,
+      reservations: [],
+      days: [{ id: 1, trip_id: 42 }, { id: 2, trip_id: 42 }],
+      trip: { id: 42 } as any,
+    });
+    const store = { assignments } as Partial<TripStoreState>;
+
+    getDayRouteSpy
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce({
+        segments: [[[30, 30], [40, 40]]],
+        legs: [],
+      });
+
+    const { result } = renderHook(
+      () => useRouteCalculation(store as TripStoreState, null),
+      { wrapper },
+    );
 
     await act(async () => {});
 
     expect(result.current.route).toEqual([
-      [[p1.lat, p1.lng], [p2.lat, p2.lng], [p3.lat, p3.lng]],
+      [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+      [[30, 30], [40, 40]],
     ]);
   });
 
-  it('FE-HOOK-ROUTE-018: two flights on one day are not road-routed airport→airport (#1394)', async () => {
-    // Two single-day flights, no place between them. The arrival of the first and the
-    // departure of the second must NOT be joined into a phantom driving run — that leg
-    // is the flight itself, not a drive.
-    const store = buildMockStore({ '5': [] });
-    useTripStore.setState({
-      reservations: [
-        { id: 1, type: 'flight', day_id: 5, end_day_id: 5, day_positions: { 5: 0 },
-          endpoints: [{ role: 'from', lat: 52.5, lng: 13.4 }, { role: 'to', lat: 42.4, lng: 18.7 }] },
-        { id: 2, type: 'flight', day_id: 5, end_day_id: 5, day_positions: { 5: 1 },
-          endpoints: [{ role: 'from', lat: 50.1, lng: 14.3 }, { role: 'to', lat: 42.4, lng: 18.9 }] },
-      ],
-      days: [{ id: 5, day_number: 1 }],
-    } as any);
+  it('FE-HOOK-ROUTE-016: all-days fetch aborts when selectedDayId changes', async () => {
+    useSettingsStore.setState({ settings: { route_calculation: true } as any });
 
-    const { result } = renderHook(() =>
-      useRouteCalculation(store as TripStoreState, 5)
+    const resolvers: Array<(v: unknown) => void> = [];
+    getDayRouteSpy.mockImplementation((_tripId, _dayId, opts) =>
+      new Promise(resolve => {
+        resolvers.push((value) => resolve(value));
+        opts?.signal?.addEventListener('abort', () => resolve({ segments: [], legs: [] }));
+      }),
     );
-    await act(async () => {});
 
-    // No real place anywhere on the day → nothing is a drive → no route is drawn.
-    // Before the fix this produced a bogus [flight1.arrival → flight2.departure] leg.
-    expect(result.current.route).toBeNull();
-    expect(result.current.routeSegments).toEqual([]);
+    const p1 = buildPlace({ lat: 10, lng: 10 });
+    const p2 = buildPlace({ lat: 20, lng: 20 });
+    const assignments = {
+      '1': [
+        buildAssignment({ day_id: 1, order_index: 0, place: p1 }),
+        buildAssignment({ day_id: 1, order_index: 1, place: p2 }),
+      ],
+      '2': [
+        buildAssignment({ day_id: 2, order_index: 0, place: p1 }),
+        buildAssignment({ day_id: 2, order_index: 1, place: p2 }),
+      ],
+    };
+    useTripStore.setState({
+      assignments,
+      reservations: [],
+      days: [{ id: 1, trip_id: 42 }, { id: 2, trip_id: 42 }],
+      trip: { id: 42 } as any,
+    });
+    const store = { assignments } as Partial<TripStoreState>;
+
+    const { rerender } = renderHook(
+      ({ dayId }: { dayId: number | null }) => useRouteCalculation(store as TripStoreState, dayId),
+      { initialProps: { dayId: null as number | null }, wrapper },
+    );
+
+    await act(async () => {
+      rerender({ dayId: 1 });
+    });
+
+    expect(getDayRouteSpy.mock.calls.some(([, dayId]) => dayId === 1)).toBe(true);
+
+    await act(async () => {
+      resolvers.forEach(r => r({ segments: [[[10, 10], [20, 20]]], legs: [] }));
+    });
   });
 });

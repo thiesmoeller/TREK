@@ -7,6 +7,8 @@ import { useAuthStore } from '../../store/authStore'
 import { useCanDo } from '../../store/permissionsStore'
 import { useToast } from '../shared/Toast'
 import { useTranslation } from '../../i18n'
+import { useRouteModes } from '../../hooks/useRouteModes'
+import { routeModeLabel } from '../../utils/routeMode'
 import { CustomDatePicker } from '../shared/CustomDateTimePicker'
 import { normalizeImageFile } from '../../utils/convertHeic'
 import { getApiErrorMessage, type Trip } from '../../types'
@@ -43,6 +45,7 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
   const can = useCanDo()
   const canUploadCover = !isEditing || can('trip_cover_upload', trip)
   const canEditTrip = !isEditing || can('trip_edit', trip)
+  const { modes: routeModes } = useRouteModes()
 
   const [formData, setFormData] = useState({
     title: '',
@@ -51,6 +54,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     end_date: '',
     reminder_days: 0 as number,
     day_count: 7 as number | '',
+    default_route_mode: 'walking',
+    route_mode_options: {} as Record<string, Record<string, string | number>>,
   })
   const [customReminder, setCustomReminder] = useState(false)
   const [error, setError] = useState('')
@@ -78,12 +83,19 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         end_date: trip.end_date || '',
         reminder_days: rd,
         day_count: trip.day_count || 7,
+        default_route_mode: trip.default_route_mode || 'walking',
+        route_mode_options: (trip.route_mode_options as Record<string, Record<string, string | number>>) || {},
       })
       setCustomReminder(![0, 1, 3, 9].includes(rd))
       setCoverPreview(trip.cover_image || null)
       setCoverSearchQuery('')
     } else {
-      setFormData({ title: '', description: '', start_date: '', end_date: '', reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7 })
+      setFormData({
+        title: '', description: '', start_date: '', end_date: '',
+        reminder_days: tripRemindersEnabled ? 3 : 0, day_count: 7,
+        default_route_mode: 'walking',
+        route_mode_options: {},
+      })
       setCustomReminder(false)
       setCoverPreview(null)
       setCoverSearchQuery('')
@@ -134,6 +146,8 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
         start_date: formData.start_date || null,
         end_date: formData.end_date || null,
         reminder_days: formData.reminder_days,
+        default_route_mode: formData.default_route_mode,
+        route_mode_options: formData.route_mode_options,
         ...(!formData.start_date && !formData.end_date ? { day_count: Number(formData.day_count) } : {}),
       })
       const createdTrip = result ? result.trip : undefined
@@ -306,6 +320,20 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
     return next
   })
 
+  const updateModeOption = (key: string, value: string | number) => setFormData(prev => ({
+    ...prev,
+    route_mode_options: {
+      ...prev.route_mode_options,
+      [prev.default_route_mode]: {
+        ...(prev.route_mode_options[prev.default_route_mode] || {}),
+        [key]: value,
+      },
+    },
+  }))
+
+  const selectedModeDescriptor = routeModes.find(m => m.mode === formData.default_route_mode)
+  const selectedModeOptions = formData.route_mode_options[formData.default_route_mode] || {}
+
   const inputCls = "w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-transparent text-sm"
 
   return (
@@ -415,6 +443,52 @@ export default function TripFormModal({ isOpen, onClose, onSave, trip, onCoverUp
             readOnly={!canEditTrip} placeholder={t('dashboard.tripDescriptionPlaceholder')} rows={3}
             className={`${inputCls} resize-none`} />
         </div>
+
+        {routeModes.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{t('dashboard.defaultRouteLegKind')}</label>
+            {canEditTrip ? (
+              <CustomSelect
+                value={formData.default_route_mode}
+                onChange={v => update('default_route_mode', v)}
+                options={routeModes.map(mode => ({
+                  value: mode.mode,
+                  label: routeModeLabel(mode, t),
+                }))}
+                size="sm"
+              />
+            ) : (
+              <p className="text-sm text-slate-600">
+                {selectedModeDescriptor ? routeModeLabel(selectedModeDescriptor, t) : formData.default_route_mode}
+              </p>
+            )}
+            {canEditTrip && (
+              <p className="text-xs text-slate-400 mt-1.5">{t('dashboard.routeLegDefaultHint')}</p>
+            )}
+          </div>
+        )}
+
+        {selectedModeDescriptor?.options?.map(opt => (
+          <div key={opt.key}>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">{opt.label}</label>
+            <input
+              type={opt.type === 'number' ? 'number' : 'text'}
+              min={opt.min}
+              max={opt.max}
+              value={selectedModeOptions[opt.key] ?? opt.default ?? ''}
+              onChange={e => {
+                if (!canEditTrip) return
+                const raw = e.target.value
+                updateModeOption(
+                  opt.key,
+                  opt.type === 'number' ? (raw === '' ? '' : Number(raw)) : raw,
+                )
+              }}
+              readOnly={!canEditTrip}
+              className={inputCls}
+            />
+          </div>
+        ))}
 
         <div className="grid grid-cols-2 gap-4">
           <div>

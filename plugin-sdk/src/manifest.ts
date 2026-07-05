@@ -32,11 +32,47 @@ const HOST_RE = /^(\*\.[a-z0-9-]+(\.[a-z0-9-]+)+|[a-z0-9-]+(\.[a-z0-9-]+)*)$/i;
 const TYPES = ['integration', 'page', 'widget'];
 const KNOWN_PERMISSIONS = [
   'db:own', 'db:read:trips', 'db:read:users', 'ws:broadcast:trip', 'ws:broadcast:user',
-  'hook:photo-provider', 'hook:calendar-source', 'http:outbound',
+  'hook:photo-provider', 'hook:calendar-source', 'hook:route-provider', 'http:outbound',
 ];
 
 function isKnownPermission(p: string): boolean {
   return KNOWN_PERMISSIONS.includes(p) || p.startsWith('http:outbound:');
+}
+
+function validateRouteModes(raw: unknown, errors: string[]): void {
+  if (raw === undefined) return;
+  if (!Array.isArray(raw)) {
+    errors.push('capabilities.routeModes must be an array');
+    return;
+  }
+  raw.forEach((item, i) => {
+    const prefix = `capabilities.routeModes[${i}]`;
+    if (!item || typeof item !== 'object') {
+      errors.push(`${prefix} must be an object`);
+      return;
+    }
+    const rm = item as Record<string, unknown>;
+    if (typeof rm.mode !== 'string' || !rm.mode) errors.push(`${prefix}.mode must be a non-empty string`);
+    if (typeof rm.label !== 'string' || !rm.label) errors.push(`${prefix}.label must be a non-empty string`);
+    if (typeof rm.allowsOptimize !== 'boolean') errors.push(`${prefix}.allowsOptimize must be a boolean`);
+    if (!Array.isArray(rm.options)) {
+      errors.push(`${prefix}.options must be an array`);
+      return;
+    }
+    rm.options.forEach((opt, j) => {
+      const optPrefix = `${prefix}.options[${j}]`;
+      if (!opt || typeof opt !== 'object') {
+        errors.push(`${optPrefix} must be an object`);
+        return;
+      }
+      const o = opt as Record<string, unknown>;
+      if (typeof o.key !== 'string' || !o.key) errors.push(`${optPrefix}.key must be a non-empty string`);
+      if (typeof o.type !== 'string' || !o.type) errors.push(`${optPrefix}.type must be a non-empty string`);
+      if (typeof o.label !== 'string' || !o.label) errors.push(`${optPrefix}.label must be a non-empty string`);
+      if (o.min !== undefined && typeof o.min !== 'number') errors.push(`${optPrefix}.min must be a number`);
+      if (o.max !== undefined && typeof o.max !== 'number') errors.push(`${optPrefix}.max must be a number`);
+    });
+  });
 }
 
 export function validateManifest(raw: unknown): ValidationResult {
@@ -74,6 +110,8 @@ export function validateManifest(raw: unknown): ValidationResult {
   if (widget?.slot !== undefined && widget.slot !== 'sidebar' && widget.slot !== 'hero') {
     errors.push(`widget slot must be "sidebar" or "hero", got "${String(widget.slot)}"`);
   }
+
+  validateRouteModes((m.capabilities as { routeModes?: unknown } | undefined)?.routeModes, errors);
 
   if (errors.length) return { ok: false, errors };
   return {

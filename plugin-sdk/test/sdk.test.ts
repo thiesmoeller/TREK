@@ -41,6 +41,18 @@ describe('definePlugin + api version', () => {
     expect(definePlugin(def)).toBe(def);
     expect(PLUGIN_API_VERSION).toBe(1);
   });
+
+  it('accepts hooks.routeProvider', () => {
+    const def = definePlugin({
+      hooks: {
+        routeProvider: {
+          modes: () => ['waterway'],
+          routeLeg: async () => ({ coords: [[0, 0], [1, 1]], distanceM: 100 }),
+        },
+      },
+    });
+    expect(def.hooks?.routeProvider?.modes()).toEqual(['waterway']);
+  });
 });
 
 describe('validateManifest', () => {
@@ -60,6 +72,46 @@ describe('validateManifest', () => {
   it('rejects native modules and non-objects', () => {
     expect(validateManifest({ ...base, nativeModules: true }).ok).toBe(false);
     expect(validateManifest('nope').ok).toBe(false);
+  });
+
+  it('accepts hook:route-provider permission', () => {
+    expect(validateManifest({ ...base, permissions: ['hook:route-provider'] }).ok).toBe(true);
+  });
+
+  it('validates capabilities.routeModes shape', () => {
+    const validRouteModes = [{
+      mode: 'waterway',
+      label: 'Waterway',
+      allowsOptimize: false,
+      options: [{ key: 'speedKmh', type: 'number', label: 'Speed (km/h)', min: 1, max: 30, default: 6 }],
+    }];
+    expect(validateManifest({ ...base, capabilities: { routeModes: validRouteModes } }).ok).toBe(true);
+
+    const r = validateManifest({ ...base, capabilities: { routeModes: 'nope' } });
+    expect(r.ok).toBe(false);
+    expect(r.errors).toContain('capabilities.routeModes must be an array');
+
+    const bad = validateManifest({
+      ...base,
+      capabilities: { routeModes: [{ mode: '', label: 'X', allowsOptimize: 'yes', options: [] }] },
+    });
+    expect(bad.ok).toBe(false);
+    expect(bad.errors.some((e) => e.includes('.mode must be'))).toBe(true);
+    expect(bad.errors.some((e) => e.includes('.allowsOptimize must be'))).toBe(true);
+
+    const badOpt = validateManifest({
+      ...base,
+      capabilities: {
+        routeModes: [{
+          mode: 'waterway',
+          label: 'Waterway',
+          allowsOptimize: false,
+          options: [{ key: 'speedKmh', type: 'number', label: 'Speed', min: '1' }],
+        }],
+      },
+    });
+    expect(badOpt.ok).toBe(false);
+    expect(badOpt.errors.some((e) => e.includes('.min must be a number'))).toBe(true);
   });
 });
 

@@ -46,6 +46,8 @@ const transport: ChildTransport = {
 
 let def: PluginDefinition | null = null;
 let ctx: PluginContext | null = null;
+/** Per-invoke abort handles for in-flight hook calls (routeLeg, etc.). */
+const hookInvokes = new Map<string, AbortController>();
 
 /**
  * Make `require('trek-plugin-sdk')` resolve inside the child WITHOUT the plugin
@@ -86,7 +88,8 @@ async function boot(config: Record<string, unknown>): Promise<void> {
     // host can proxy HTTP and schedule jobs without re-parsing the manifest.
     const routes = (def.routes ?? []).map((r, i) => ({ i, method: r.method, path: r.path, auth: r.auth !== false }));
     const jobs = (def.jobs ?? []).map((j) => j.id);
-    send({ k: 'evt', topic: 'loaded', data: { routes, jobs } });
+    const hooks = { routeProvider: !!def.hooks?.routeProvider };
+    send({ k: 'evt', topic: 'loaded', data: { routes, jobs, hooks } });
     // An immediate first heartbeat confirms liveness without waiting a full interval.
     send({ k: 'evt', topic: 'heartbeat', data: { rss: process.memoryUsage().rss } });
   } catch (e) {
@@ -94,14 +97,29 @@ async function boot(config: Record<string, unknown>): Promise<void> {
   }
 }
 
-/** Handle a host→child request: run a declared route or job with the plugin ctx. */
+function respondInvoke(id: string, ok: boolean, payload: unknown): void {
+  send(
+    ok
+      ? { k: 'res', id, ok: true, result: payload }
+      : { k: 'res', id, ok: false, error: { code: 'PLUGIN_ERROR', message: String(payload) } },
+  );
+}
+
+/** Abort an in-flight hook invoke and reject its host-side promise. */
+function handleInvokeCancel(req: { id: string; params: Record<string, unknown> }): void {
+  const targetId = req.params.targetId as string;
+  const ac = hookInvokes.get(targetId);
+  if (ac) {
+    ac.abort();
+    respondInvoke(targetId, false, 'cancelled');
+    hookInvokes.delete(targetId);
+  }
+  respondInvoke(req.id, true, { ok: true });
+}
+
+/** Handle a host→child request: run a declared route, job, or hook with the plugin ctx. */
 async function handleInvoke(req: { id: string; method: string; params: Record<string, unknown> }): Promise<void> {
-  const respond = (ok: boolean, payload: unknown) =>
-    send(
-      ok
-        ? { k: 'res', id: req.id, ok: true, result: payload }
-        : { k: 'res', id: req.id, ok: false, error: { code: 'PLUGIN_ERROR', message: String(payload) } },
-    );
+  const respond = (ok: boolean, payload: unknown) => respondInvoke(req.id, ok, payload);
   try {
     if (!def || !ctx) throw new Error('plugin not loaded');
     // A per-invocation ctx tagged with this invoke's id, so the host binds trip
@@ -120,10 +138,37 @@ async function handleInvoke(req: { id: string; method: string; params: Record<st
       if (!job) throw new Error(`no job ${jobId}`);
       await job.handler(invCtx);
       respond(true, { ok: true });
+    } else if (req.method === 'invoke.hook') {
+      const hook = req.params.hook as string;
+      const hookMethod = req.params.method as string;
+      const args = (req.params.args ?? []) as unknown[];
+      if (hook !== 'routeProvider') throw new Error(`unknown hook ${hook}`);
+      const provider = def.hooks?.routeProvider;
+      if (!provider) throw new Error('routeProvider hook not implemented');
+      if (hookMethod === 'modes') {
+        respond(true, provider.modes());
+        return;
+      }
+      if (hookMethod === 'routeLeg') {
+        const ac = new AbortController();
+        hookInvokes.set(req.id, ac);
+        try {
+          const result = await provider.routeLeg(args[0] as Parameters<typeof provider.routeLeg>[0]);
+          if (ac.signal.aborted) return;
+          respond(true, result);
+        } finally {
+          hookInvokes.delete(req.id);
+        }
+        return;
+      }
+      throw new Error(`unknown hook method ${hookMethod}`);
     } else {
       respond(false, `unknown invoke ${req.method}`);
     }
   } catch (e) {
+    const ac = hookInvokes.get(req.id);
+    hookInvokes.delete(req.id);
+    if (ac?.signal.aborted) return;
     respond(false, errMsg(e));
   }
 }
@@ -142,8 +187,13 @@ process.on('message', (raw: unknown) => {
   const msg = raw as Envelope;
   if (!msg || typeof msg !== 'object') return;
   if (msg.k === 'req') {
-    // A host→child invoke (route / job).
-    void handleInvoke({ id: msg.id, method: msg.method, params: (msg.params ?? {}) as Record<string, unknown> });
+    const params = (msg.params ?? {}) as Record<string, unknown>;
+    if (msg.method === 'invoke.cancel') {
+      handleInvokeCancel({ id: msg.id, params });
+      return;
+    }
+    // A host→child invoke (route / job / hook).
+    void handleInvoke({ id: msg.id, method: msg.method, params });
     return;
   }
   if (msg.k === 'res') {

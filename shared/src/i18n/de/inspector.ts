@@ -20,6 +20,12 @@ const inspector: TranslationStrings = {
   'inspector.addRes': 'Reservierung',
   'inspector.editRes': 'Reservierung bearbeiten',
   'inspector.participants': 'Teilnehmer',
+  'inspector.routeLegLabel': 'Route von diesem Stopp zum nächsten',
+  'inspector.routeLegInheritHelp':
+    '„Reise-Standard“ nutzt den Modus aus dem Reiseformular. Hier nur für diesen Stopp überschreiben.',
+  'inspector.routeLegRouteCalcHint':
+    'Aktiviere die Routenberechnung unter Einstellungen → Karte, um Routen auf der Karte zu zeichnen.',
+  'inspector.routeLegInherit': 'Reise-Standard',
   'inspector.trackStats': 'Streckendaten',
 };
 export default inspector;

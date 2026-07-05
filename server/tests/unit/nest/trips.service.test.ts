@@ -33,18 +33,23 @@ vi.mock('../../../src/services/fileService', () => ({ listFiles: () => [] }));
 
 import { TripsService } from '../../../src/nest/trips/trips.service';
 
-function svc() { return new TripsService(); }
+const routeRegistry = {
+  isRegisteredMode: vi.fn(() => false),
+  getRegisteredModes: vi.fn(() => []),
+} as unknown as import('../../../src/nest/plugins/route-provider-registry.service').RouteProviderRegistryService;
+
+function svc() { return new TripsService(routeRegistry); }
 beforeEach(() => vi.clearAllMocks());
 
 describe('TripsService (wrapper delegation + bundle/copy/notify helpers)', () => {
   it('delegates the simple wrappers to tripService', () => {
     const s = svc();
     s.list(1, 0); expect(tripSvc.listTrips).toHaveBeenCalledWith(1, 0);
-    s.create(1, { title: 'T' } as never); expect(tripSvc.createTrip).toHaveBeenCalledWith(1, { title: 'T' });
+    s.create(1, { title: 'T' } as never); expect(tripSvc.createTrip).toHaveBeenCalledWith(1, { title: 'T' }, undefined, routeRegistry);
     s.get('9', 1); expect(tripSvc.getTrip).toHaveBeenCalledWith('9', 1);
     s.getRaw('9'); expect(tripSvc.getTripRaw).toHaveBeenCalledWith('9');
     s.getOwner('9'); expect(tripSvc.getTripOwner).toHaveBeenCalledWith('9');
-    s.update('9', 1, {} as never, 'user'); expect(tripSvc.updateTrip).toHaveBeenCalledWith('9', 1, {}, 'user');
+    s.update('9', 1, {} as never, 'user'); expect(tripSvc.updateTrip).toHaveBeenCalledWith('9', 1, {}, 'user', routeRegistry);
     s.remove('9', 1, 'user'); expect(tripSvc.deleteTrip).toHaveBeenCalledWith('9', 1, 'user');
     s.deleteOldCover('/old.jpg'); expect(tripSvc.deleteOldCover).toHaveBeenCalledWith('/old.jpg');
     s.updateCoverImage('9', '/n.jpg'); expect(tripSvc.updateCoverImage).toHaveBeenCalledWith('9', '/n.jpg');

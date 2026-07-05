@@ -72,4 +72,37 @@ describe('parseManifest capabilities', () => {
   it('rejects an unknown widget slot', () => {
     expect(() => parseManifest({ ...base, capabilities: { widget: { slot: 'floating' } } })).toThrow(ManifestError);
   });
+
+  it('parses routeModes capabilities', () => {
+    const m = parseManifest({
+      ...base,
+      permissions: ['hook:route-provider'],
+      capabilities: {
+        routeModes: [{
+          mode: 'waterway',
+          label: 'Waterway',
+          allowsOptimize: false,
+          options: [{ key: 'speedKmh', type: 'number', label: 'Speed (km/h)', min: 1, max: 30, default: 6 }],
+        }],
+      },
+    });
+    expect(m.capabilities.routeModes).toEqual([{
+      mode: 'waterway',
+      label: 'Waterway',
+      allowsOptimize: false,
+      options: [{ key: 'speedKmh', type: 'number', label: 'Speed (km/h)', min: 1, max: 30, default: 6 }],
+    }]);
+  });
+
+  it.each([
+    ['not an array', { routeModes: 'nope' }, /routeModes must be an array/],
+    ['missing mode', { routeModes: [{ label: 'X', allowsOptimize: false, options: [] }] }, /routeModes\[0\]\.mode/],
+    ['bad allowsOptimize', { routeModes: [{ mode: 'x', label: 'X', allowsOptimize: 'no', options: [] }] }, /allowsOptimize must be a boolean/],
+    ['options not array', { routeModes: [{ mode: 'x', label: 'X', allowsOptimize: false, options: {} }] }, /options must be an array/],
+    ['option missing key', { routeModes: [{ mode: 'x', label: 'X', allowsOptimize: false, options: [{ type: 'number', label: 'L' }] }] }, /options\[0\]\.key/],
+    ['option min not number', { routeModes: [{ mode: 'x', label: 'X', allowsOptimize: false, options: [{ key: 'k', type: 'number', label: 'L', min: '1' }] }] }, /min must be a number/],
+  ])('rejects invalid routeModes: %s', (_label, capabilities, re) => {
+    expect(() => parseManifest({ ...base, capabilities })).toThrow(ManifestError);
+    expect(() => parseManifest({ ...base, capabilities })).toThrow(re as RegExp);
+  });
 });

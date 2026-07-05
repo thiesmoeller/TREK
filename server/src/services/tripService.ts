@@ -10,6 +10,11 @@ import { listItems as listPackingItems } from './packingService';
 import { listReservations, loadEndpointsByTrip, resyncReservationDays } from './reservationService';
 import { listNotes as listCollabNotes } from './collabService';
 import { shiftOwnerEntriesForTripWindow } from './vacayService';
+import {
+  validateRouteModeOptions,
+  validateTripRouteMode,
+  type RouteModeRegistry,
+} from './routeModeValidation';
 
 export const MS_PER_DAY = 86400000;
 export const MAX_TRIP_DAYS = 365;
@@ -178,31 +183,84 @@ interface CreateTripData {
   currency?: string;
   reminder_days?: number;
   day_count?: number;
+  default_route_mode?: string | null;
+  route_mode_options?: Record<string, Record<string, unknown>> | null;
 }
 
-export function createTrip(userId: number, data: CreateTripData, maxDays?: number) {
+function hydrateTripRow<T extends { route_mode_options?: unknown }>(trip: T | undefined): T | undefined {
+  if (!trip) return trip;
+  if (typeof trip.route_mode_options === 'string') {
+    try {
+      const parsed = JSON.parse(trip.route_mode_options || '{}');
+      return {
+        ...trip,
+        route_mode_options: parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {},
+      };
+    } catch {
+      return { ...trip, route_mode_options: {} };
+    }
+  }
+  return trip;
+}
+
+function serializeRouteModeOptions(
+  options: Record<string, Record<string, unknown>> | null | undefined,
+): string {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return '{}';
+  return JSON.stringify(options);
+}
+
+export function createTrip(
+  userId: number,
+  data: CreateTripData,
+  maxDays?: number,
+  registry?: RouteModeRegistry,
+) {
+  if (registry) {
+    if (data.default_route_mode !== undefined) {
+      validateTripRouteMode(data.default_route_mode, registry);
+    }
+    if (data.route_mode_options !== undefined) {
+      validateRouteModeOptions(data.route_mode_options, registry);
+    }
+  }
+
   const rd = data.reminder_days !== undefined
     ? (Number(data.reminder_days) >= 0 && Number(data.reminder_days) <= 30 ? Number(data.reminder_days) : 3)
     : 3;
+  const defaultRouteMode = data.default_route_mode?.trim().toLowerCase() || 'walking';
+  const routeModeOptions = serializeRouteModeOptions(data.route_mode_options);
 
   const result = db.prepare(`
-    INSERT INTO trips (user_id, title, description, start_date, end_date, currency, reminder_days)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(userId, data.title, data.description || null, data.start_date || null, data.end_date || null, data.currency || 'EUR', rd);
+    INSERT INTO trips (user_id, title, description, start_date, end_date, currency, reminder_days, default_route_mode, route_mode_options)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId,
+    data.title,
+    data.description || null,
+    data.start_date || null,
+    data.end_date || null,
+    data.currency || 'EUR',
+    rd,
+    defaultRouteMode,
+    routeModeOptions,
+  );
 
   const tripId = result.lastInsertRowid;
   generateDays(tripId, data.start_date || null, data.end_date || null, maxDays, data.day_count);
 
-  const trip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId });
+  const trip = hydrateTripRow(
+    db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId }) as Trip | undefined,
+  );
   return { trip, tripId: Number(tripId), reminderDays: rd };
 }
 
 export function getTrip(tripId: string | number, userId: number) {
-  return db.prepare(`
+  return hydrateTripRow(db.prepare(`
     ${TRIP_SELECT}
     LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = :userId
     WHERE t.id = :tripId AND (t.user_id = :userId OR m.user_id IS NOT NULL)
-  `).get({ userId, tripId }) as Trip | undefined;
+  `).get({ userId, tripId }) as Trip | undefined);
 }
 
 interface UpdateTripData {
@@ -215,6 +273,8 @@ interface UpdateTripData {
   cover_image?: string;
   reminder_days?: number;
   day_count?: number;
+  default_route_mode?: string | null;
+  route_mode_options?: Record<string, Record<string, unknown>> | null;
 }
 
 export interface UpdateTripResult {
@@ -227,9 +287,24 @@ export interface UpdateTripResult {
   oldReminder: number;
 }
 
-export function updateTrip(tripId: string | number, userId: number, data: UpdateTripData, userRole: string): UpdateTripResult {
+export function updateTrip(
+  tripId: string | number,
+  userId: number,
+  data: UpdateTripData,
+  userRole: string,
+  registry?: RouteModeRegistry,
+): UpdateTripResult {
   const trip = db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as Trip & { reminder_days?: number } | undefined;
   if (!trip) throw new NotFoundError('Trip not found');
+
+  if (registry) {
+    if (data.default_route_mode !== undefined) {
+      validateTripRouteMode(data.default_route_mode, registry);
+    }
+    if (data.route_mode_options !== undefined) {
+      validateRouteModeOptions(data.route_mode_options, registry);
+    }
+  }
 
   const { title, description, start_date, end_date, currency, is_archived, cover_image, reminder_days } = data;
 
@@ -247,12 +322,31 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
   const newReminder = reminder_days !== undefined
     ? (Number(reminder_days) >= 0 && Number(reminder_days) <= 30 ? Number(reminder_days) : oldReminder)
     : oldReminder;
+  const newDefaultRouteMode = data.default_route_mode !== undefined
+    ? (data.default_route_mode?.trim().toLowerCase() || 'walking')
+    : ((trip as { default_route_mode?: string | null }).default_route_mode ?? 'walking');
+  const newRouteModeOptions = data.route_mode_options !== undefined
+    ? serializeRouteModeOptions(data.route_mode_options)
+    : ((trip as { route_mode_options?: string | null }).route_mode_options ?? '{}');
 
   db.prepare(`
     UPDATE trips SET title=?, description=?, start_date=?, end_date=?,
-      currency=?, is_archived=?, cover_image=?, reminder_days=?, updated_at=CURRENT_TIMESTAMP
+      currency=?, is_archived=?, cover_image=?, reminder_days=?,
+      default_route_mode=?, route_mode_options=?, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
-  `).run(newTitle, newDesc, newStart || null, newEnd || null, newCurrency, newArchived, newCover, newReminder, tripId);
+  `).run(
+    newTitle,
+    newDesc,
+    newStart || null,
+    newEnd || null,
+    newCurrency,
+    newArchived,
+    newCover,
+    newReminder,
+    newDefaultRouteMode,
+    newRouteModeOptions,
+    tripId,
+  );
 
   if (trip.start_date && trip.end_date && newStart && newStart !== trip.start_date)
     shiftOwnerEntriesForTripWindow(trip.user_id, trip.start_date, trip.end_date, newStart);
@@ -278,7 +372,7 @@ export function updateTrip(tripId: string | number, userId: number, data: Update
     ownerEmail = (db.prepare('SELECT email FROM users WHERE id = ?').get(trip.user_id) as { email: string } | undefined)?.email;
   }
 
-  const updatedTrip = db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId });
+  const updatedTrip = hydrateTripRow(db.prepare(`${TRIP_SELECT} WHERE t.id = :tripId`).get({ userId, tripId }));
 
   return { updatedTrip, changes, isAdminEdit, ownerEmail, newTitle, newReminder, oldReminder };
 }

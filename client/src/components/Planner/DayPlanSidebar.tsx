@@ -22,6 +22,8 @@ import { useAddonStore } from '../../store/addonStore'
 import { useSaveToCollectionStore } from '../../store/saveToCollectionStore'
 import { placeToSaveTarget } from '../Collections/saveTarget'
 import { useTranslation } from '../../i18n'
+import { useRouteModes } from '../../hooks/useRouteModes'
+import { dayHasNonOptimizableLegsBeforeLast, routeModeLabel } from '../../utils/routeMode'
 import { isDayInAccommodationRange, getAccommodationAnchors, getDayBookendHotels } from '../../utils/dayOrder'
 import {
   TRANSPORT_TYPES, parseTimeToMinutes, getSpanPhase, getDisplayTimeForDay, getTransportRouteEndpoints,
@@ -148,6 +150,13 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
   const tripActions = useRef(useTripStore.getState()).current
   const can = useCanDo()
   const canEditDays = can('day_edit', trip)
+  const { modes: routeModes } = useRouteModes()
+  const profileModes = useMemo(
+    () => (routeModes.length > 0
+      ? routeModes.filter(m => m.mode === 'walking' || m.mode === 'driving')
+      : [{ mode: 'driving' }, { mode: 'walking' }]),
+    [routeModes],
+  )
 
   const { noteUi, setNoteUi, noteInputRef, dayNotes, openAddNote: _openAddNote, openEditNote: _openEditNote, cancelNote, saveNote, deleteNote: _deleteNote, moveNote: _moveNote } = useDayNotes(tripId)
 
@@ -859,6 +868,10 @@ function useDayPlanSidebar(props: DayPlanSidebarProps) {
     if (!dayId) return
     const da = getDayAssignments(dayId)
     if (da.length < 3) return
+    if (dayHasNonOptimizableLegsBeforeLast(da, trip?.default_route_mode, routeModes)) {
+      toast.info(t('dayplan.optimizeDisabled'))
+      return
+    }
 
     const prevIds = da.map(a => a.id)
 
@@ -2386,14 +2399,15 @@ const DayPlanSidebar = React.memo(function DayPlanSidebar(props: DayPlanSidebarP
                           {t('dayplan.optimize')}
                         </button>
                         <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border-faint)', flexShrink: 0 }}>
-                          {(['driving', 'walking'] as const).map(p => {
+                          {profileModes.map(mode => {
+                            const p = mode.mode as 'driving' | 'walking'
                             const ModeIcon = p === 'driving' ? Car : Footprints
                             const active = routeProfile === p
                             return (
                               <button
                                 key={p}
                                 onClick={() => onSetRouteProfile?.(p)}
-                                aria-label={p === 'driving' ? 'Driving' : 'Walking'}
+                                aria-label={routeModes.length ? routeModeLabel(mode as typeof routeModes[number], t) : p}
                                 className={active ? 'bg-accent text-accent-text' : 'bg-transparent text-content-secondary'}
                                 style={{
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',

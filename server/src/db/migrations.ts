@@ -3419,6 +3419,24 @@ function runMigrations(db: Database.Database): void {
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_place ON collection_place_labels(collection_place_id);');
       db.exec('CREATE INDEX IF NOT EXISTS idx_collection_place_labels_label ON collection_place_labels(label_id);');
     },
+    // Migration 161: day-plan route modes — trip default, per-mode options JSON, per-assignment override.
+    () => {
+      try {
+        db.exec("ALTER TABLE trips ADD COLUMN default_route_mode TEXT DEFAULT 'walking'");
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+      try {
+        db.exec("ALTER TABLE trips ADD COLUMN route_mode_options TEXT DEFAULT '{}'");
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+      try {
+        db.exec('ALTER TABLE day_assignments ADD COLUMN route_mode_override TEXT');
+      } catch (err: any) {
+        if (!err.message?.includes('duplicate column name')) throw err;
+      }
+    },
   ];
 
   if (currentVersion < migrations.length) {

@@ -220,6 +220,7 @@ const admin: TranslationStrings = {
   'admin.plugins.perm.ws:broadcast:user': 'Echtzeit-Updates an einzelne Nutzer senden',
   'admin.plugins.perm.hook:photo-provider': 'Fotos für Erinnerungen bereitstellen',
   'admin.plugins.perm.hook:calendar-source': 'Termine für den Kalender bereitstellen',
+  'admin.plugins.perm.hook:route-provider': 'Routenmodi für den Tagesplan bereitstellen',
   'admin.plugins.perm.http:outbound': 'Ausgehende Anfragen an deklarierte Hosts stellen',
   'admin.plugins.updateConsentTitle': 'Dieses Update braucht neue Berechtigungen',
   'admin.plugins.updateConsentBody': '{name} v{version} verlangt Rechte, die du bisher nicht freigegeben hast. Die neue Version ist installiert, bleibt aber aus, bis du sie freigibst.',

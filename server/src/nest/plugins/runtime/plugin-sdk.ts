@@ -66,12 +66,32 @@ export interface PluginJob {
   schedule: string;
   handler(ctx: PluginContext): Promise<void>;
 }
+
+export interface RouteLegRequest {
+  mode: string;
+  from: { lat: number; lng: number };
+  to: { lat: number; lng: number };
+  legKey: string;
+  tripId: number;
+  modeOptions?: Record<string, unknown>;
+}
+export interface RouteLegResult {
+  coords: [number, number][];
+  distanceM: number;
+  durationS?: number;
+  isApproximate?: boolean;
+}
+export interface RouteProvider {
+  modes(): string[];
+  routeLeg(req: RouteLegRequest): Promise<RouteLegResult>;
+}
+
 export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   jobs?: PluginJob[];
-  // hooks (photo/calendar) land in M2
+  hooks?: { routeProvider?: RouteProvider };
 }
 
 /** Identity helper: gives authors types + a stable shape. A plain object works too. */

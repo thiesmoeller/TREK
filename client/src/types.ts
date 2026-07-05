@@ -26,6 +26,7 @@ import type {
   Tag,
   Category,
   AppearanceConfig,
+  DayRouteLeg,
 } from '@trek/shared'
 
 export type {
@@ -49,6 +50,7 @@ export type {
   Tag,
   Category,
   AppearanceConfig,
+  DayRouteLeg,
 }
 
 export interface User {
@@ -153,12 +155,18 @@ export interface RouteSegment {
   mid: [number, number]
   from: [number, number]
   to: [number, number]
-  distance: number
-  duration: number
+  distance?: number
+  duration?: number
   walkingText: string
   drivingText: string
-  distanceText: string
+  distanceText?: string
   durationText?: string
+  polylineIndex?: number
+  routeMode?: string
+  waterwayText?: string
+  distanceM?: number
+  durationS?: number
+  isApproximate?: boolean
 }
 
 export interface RouteWithLegs {

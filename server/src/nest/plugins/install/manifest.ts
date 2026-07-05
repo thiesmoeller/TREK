@@ -27,8 +27,25 @@ export interface WidgetCapability {
   slot?: 'sidebar' | 'hero';
 }
 
+export interface RouteModeOption {
+  key: string;
+  type: string;
+  label: string;
+  min?: number;
+  max?: number;
+  default?: unknown;
+}
+
+export interface RouteModeCapability {
+  mode: string;
+  label: string;
+  allowsOptimize: boolean;
+  options: RouteModeOption[];
+}
+
 export interface PluginCapabilities {
   widget?: WidgetCapability;
+  routeModes?: RouteModeCapability[];
 }
 
 export interface PluginManifest {
@@ -139,7 +156,37 @@ function parseCapabilities(raw: unknown): PluginCapabilities {
       slot: (slot as WidgetCapability['slot']) ?? 'sidebar',
     };
   }
+  if (c.routeModes !== undefined) out.routeModes = parseRouteModes(c.routeModes);
   return out;
+}
+
+function parseRouteModes(raw: unknown): RouteModeCapability[] {
+  if (!Array.isArray(raw)) throw new ManifestError('capabilities.routeModes must be an array');
+  return raw.map((item, i) => {
+    const prefix = `capabilities.routeModes[${i}]`;
+    if (!item || typeof item !== 'object') throw new ManifestError(`${prefix} must be an object`);
+    const rm = item as Record<string, unknown>;
+    const mode = str(rm.mode, `${prefix}.mode`);
+    const label = str(rm.label, `${prefix}.label`);
+    if (typeof rm.allowsOptimize !== 'boolean') throw new ManifestError(`${prefix}.allowsOptimize must be a boolean`);
+    if (!Array.isArray(rm.options)) throw new ManifestError(`${prefix}.options must be an array`);
+    const options = rm.options.map((opt, j) => {
+      const optPrefix = `${prefix}.options[${j}]`;
+      if (!opt || typeof opt !== 'object') throw new ManifestError(`${optPrefix} must be an object`);
+      const o = opt as Record<string, unknown>;
+      const key = str(o.key, `${optPrefix}.key`);
+      const type = str(o.type, `${optPrefix}.type`);
+      const optLabel = str(o.label, `${optPrefix}.label`);
+      if (o.min !== undefined && typeof o.min !== 'number') throw new ManifestError(`${optPrefix}.min must be a number`);
+      if (o.max !== undefined && typeof o.max !== 'number') throw new ManifestError(`${optPrefix}.max must be a number`);
+      const out: RouteModeOption = { key, type, label: optLabel };
+      if (o.min !== undefined) out.min = o.min;
+      if (o.max !== undefined) out.max = o.max;
+      if (o.default !== undefined) out.default = o.default;
+      return out;
+    });
+    return { mode, label, allowsOptimize: rm.allowsOptimize, options };
+  });
 }
 
 function parseSettings(raw: unknown): ManifestSettingField[] {
@@ -170,4 +217,14 @@ function optStr(v: unknown): string | undefined {
 }
 function arr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
+}
+
+/** Parse capabilities JSON from the plugins table (lenient — invalid JSON → {}). */
+export function parseStoredCapabilities(json: string): PluginCapabilities {
+  try {
+    const raw = JSON.parse(json || '{}');
+    return parseCapabilities(raw);
+  } catch {
+    return {};
+  }
 }

@@ -3,6 +3,7 @@ import { DaysController } from './days.controller';
 import { DaysService } from './days.service';
 import { DayNotesController } from './day-notes.controller';
 import { DayNotesService } from './day-notes.service';
+import { PluginsModule } from '../plugins/plugins.module';
 
 /**
  * Days + day-notes domain (S6 — Phase 2 trip sub-domain). The single prefix
@@ -10,6 +11,7 @@ import { DayNotesService } from './day-notes.service';
  * /days/:dayId/notes mount.
  */
 @Module({
+  imports: [PluginsModule],
   controllers: [DaysController, DayNotesController],
   providers: [DaysService, DayNotesService],
 })

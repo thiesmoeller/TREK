@@ -4,6 +4,7 @@ import { broadcast } from '../../websocket';
 import { checkPermission } from '../../services/permissions';
 import type { User } from '../../types';
 import * as tripSvc from '../../services/tripService';
+import { RouteProviderRegistryService } from '../plugins/route-provider-registry.service';
 import { listDays, listAccommodations } from '../../services/dayService';
 import { listPlaces } from '../../services/placeService';
 import { listItems as listPackingItems } from '../../services/packingService';
@@ -22,6 +23,7 @@ import { searchUnsplashPhotos } from '../../services/unsplashService';
  */
 @Injectable()
 export class TripsService {
+  constructor(private readonly routeRegistry: RouteProviderRegistryService) {}
   canAccessTrip(tripId: string, userId: number) {
     return canAccessTrip(tripId, userId) as { user_id: number } | null | undefined;
   }
@@ -39,7 +41,7 @@ export class TripsService {
   }
 
   create(userId: number, data: Parameters<typeof tripSvc.createTrip>[1]) {
-    return tripSvc.createTrip(userId, data);
+    return tripSvc.createTrip(userId, data, undefined, this.routeRegistry);
   }
 
   get(tripId: string, userId: number) {
@@ -59,7 +61,7 @@ export class TripsService {
   }
 
   update(tripId: string, userId: number, body: Parameters<typeof tripSvc.updateTrip>[2], role: string) {
-    return tripSvc.updateTrip(tripId, userId, body, role);
+    return tripSvc.updateTrip(tripId, userId, body, role, this.routeRegistry);
   }
 
   remove(tripId: string, userId: number, role: string) {

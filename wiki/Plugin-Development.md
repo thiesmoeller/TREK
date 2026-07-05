@@ -199,14 +199,24 @@ settings are per-user. `secret: true` fields are stored encrypted and delivered
 decrypted through `ctx.config` (server-side only) — never to the iframe. Resolved
 values arrive in `ctx.config`.
 
-## Integration hooks (not yet functional)
+## Integration hooks
 
-The SDK exports `PhotoProvider` / `CalendarSource` interfaces and a
-`hooks: { photoProvider, calendarSource }` field on the plugin definition, and the
-`hook:photo-provider` / `hook:calendar-source` permissions validate. **However the
-host runtime does not consume `hooks` yet** — it only invokes `onLoad`, `onUnload`,
-`routes` and `jobs`. Treat these as a reserved surface: you can declare them, but
-TREK will not call them today. Build integrations with routes + jobs for now.
+### Route provider (functional)
+
+Plugins with `hook:route-provider` can implement `hooks.routeProvider` to register
+day-plan route modes via `capabilities.routeModes` in the manifest. The host calls
+`modes()` and `routeLeg()` over the supervisor invoke channel; in-flight work is
+cancelled when the user switches days or the HTTP request aborts.
+
+See [[Day-plan Route Modes|Day-Plan-Route-Modes]] and the `RouteProvider` types in
+`trek-plugin-sdk`. Reference implementation: **trek-plugin-waterway**.
+
+### Photo / calendar (reserved)
+
+The SDK exports `PhotoProvider` / `CalendarSource` interfaces and
+`hook:photo-provider` / `hook:calendar-source` permissions validate, but the host
+does **not** invoke those hooks yet — only `routeProvider` is wired. Build photo/calendar
+integrations with routes + jobs for now.
 
 ## Testing without a running TREK
 

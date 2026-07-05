@@ -14,6 +14,7 @@ import type { User } from '../../types';
 import { AssignmentsService } from './assignments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { ValidationError } from '../../services/tripService';
 
 type Trip = NonNullable<ReturnType<AssignmentsService['verifyTripAccess']>>;
 
@@ -92,6 +93,42 @@ export class DayAssignmentsController {
     this.assignments.reorderAssignments(dayId, orderedIds);
     this.assignments.broadcast(tripId, 'assignment:reordered', { dayId: Number(dayId), orderedIds }, socketId);
     return { success: true };
+  }
+
+  @Put(':id/route-mode')
+  routeMode(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Param('dayId') dayId: string,
+    @Param('id') id: string,
+    @Body() body: { route_mode_override?: string | null },
+    @Headers('x-socket-id') socketId?: string,
+  ) {
+    const trip = requireTrip(this.assignments, tripId, user);
+    requireEdit(this.assignments, trip, user);
+    if (!this.assignments.dayExists(dayId, tripId)) {
+      throw new HttpException({ error: 'Day not found' }, 404);
+    }
+    if (!this.assignments.assignmentExistsInDay(id, dayId, tripId)) {
+      throw new HttpException({ error: 'Assignment not found' }, 404);
+    }
+    if (!('route_mode_override' in body)) {
+      throw new HttpException({ error: 'route_mode_override is required' }, 400);
+    }
+    const override = body.route_mode_override;
+    if (override !== null && override !== undefined && typeof override !== 'string') {
+      throw new HttpException({ error: 'route_mode_override must be a string or null' }, 400);
+    }
+    try {
+      const assignment = this.assignments.updateRouteModeOverride(id, override ?? null);
+      this.assignments.broadcast(tripId, 'assignment:updated', { assignment }, socketId);
+      return { assignment };
+    } catch (e: unknown) {
+      if (e instanceof ValidationError) {
+        throw new HttpException({ error: e.message }, 400);
+      }
+      throw e;
+    }
   }
 
   @Delete(':id')

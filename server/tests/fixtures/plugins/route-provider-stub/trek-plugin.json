@@ -1,0 +1,18 @@
+{
+  "id": "route-provider-stub",
+  "name": "Route Provider Stub",
+  "version": "1.0.0",
+  "type": "integration",
+  "apiVersion": 1,
+  "permissions": ["hook:route-provider"],
+  "capabilities": {
+    "routeModes": [
+      {
+        "mode": "stub",
+        "label": "Stub",
+        "allowsOptimize": false,
+        "options": []
+      }
+    ]
+  }
+}

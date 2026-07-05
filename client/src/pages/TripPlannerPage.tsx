@@ -569,6 +569,8 @@ export default function TripPlannerPage(): React.ReactElement | null {
                 onUpdatePlace={async (placeId, data) => { try { await tripActions.updatePlace(tripId, placeId, data) } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) } }}
                 leftWidth={(isMobile || window.innerWidth < 900) ? 0 : (leftCollapsed ? 0 : leftWidth)}
                 rightWidth={(isMobile || window.innerWidth < 900) ? 0 : (rightCollapsed ? 0 : rightWidth)}
+                tripId={tripId}
+                canEditRouteLeg={can('day_edit', trip)}
               />
             )}
 
@@ -607,6 +609,8 @@ export default function TripPlannerPage(): React.ReactElement | null {
                     onUpdatePlace={async (placeId, data) => { try { await tripActions.updatePlace(tripId, placeId, data) } catch (err: unknown) { toast.error(err instanceof Error ? err.message : t('common.unknownError')) } }}
                     leftWidth={0}
                     rightWidth={0}
+                    tripId={tripId}
+                    canEditRouteLeg={can('day_edit', trip)}
                   />
                 </div>
               </div>,

@@ -22,6 +22,7 @@ import { splitReservationDateTime, formatTime } from '../../utils/formatters'
 import { formatDistance, formatElevation } from '../../utils/units'
 import { getGoogleMapsUrlForPlace } from './placeGoogleMaps'
 import { getOpenStreetMapUrlForPlace } from './placeOpenStreetMap'
+import { PlaceInspectorRouteLegOverride } from './PlaceInspectorRouteLegOverride'
 
 const detailsCache = new Map()
 
@@ -127,6 +128,9 @@ interface PlaceInspectorProps {
   onUpdatePlace?: (placeId: number, data: Partial<Place>) => void
   leftWidth?: number
   rightWidth?: number
+  /** When set with `canEditRouteLeg`, user can override how the leg from this stop to the next is routed. */
+  tripId?: number | null
+  canEditRouteLeg?: boolean
   // ── Collection-mode props ──
   collectionStatus?: CollectionStatus
   onCopyToTrip?: () => void
@@ -139,7 +143,7 @@ export default function PlaceInspector({
   assignments = {}, reservations = [],
   onClose, onEdit, onDelete, onAssignToDay, onRemoveAssignment,
   files = [], onFileUpload, tripMembers = [], onSetParticipants, onUpdatePlace,
-  leftWidth = 0, rightWidth = 0,
+  leftWidth = 0, rightWidth = 0, tripId = null, canEditRouteLeg = false,
   collectionStatus, onCopyToTrip, onSetStatus, onRemoveFromList,
 }: PlaceInspectorProps) {
   const { t, locale, language } = useTranslation()
@@ -340,6 +344,14 @@ export default function PlaceInspector({
             <div className="collab-note-md bg-surface-hover text-content-muted" style={{ borderRadius: 10, overflow: 'hidden', flexShrink: 0, fontSize: 'calc(12px * var(--fs-scale-body, 1))', lineHeight: '1.5', padding: '8px 12px', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
               <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{place.notes}</Markdown>
             </div>
+          )}
+
+          {mode === 'trip' && tripId != null && canEditRouteLeg && selectedDayId != null && assignmentInDay && (
+            <PlaceInspectorRouteLegOverride
+              tripId={tripId}
+              selectedDayId={selectedDayId}
+              assignment={assignmentInDay}
+            />
           )}
 
           {/* Reservation + Participants — trip-only (collections have no days) */}

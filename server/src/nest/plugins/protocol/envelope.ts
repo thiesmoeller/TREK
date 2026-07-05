@@ -81,6 +81,7 @@ export const KNOWN_PERMISSIONS = [
   'ws:broadcast:user',
   'hook:photo-provider',
   'hook:calendar-source',
+  'hook:route-provider',
   'http:outbound',
 ] as const;
 

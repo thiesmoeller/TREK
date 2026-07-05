@@ -272,6 +272,7 @@ const admin: TranslationStrings = {
   'admin.plugins.perm.ws:broadcast:user': 'Send real-time updates to individual users',
   'admin.plugins.perm.hook:photo-provider': 'Provide photos to Memories',
   'admin.plugins.perm.hook:calendar-source': 'Provide events to the calendar',
+  'admin.plugins.perm.hook:route-provider': 'Provide day-plan route modes',
   'admin.plugins.perm.http:outbound': 'Make outbound requests to its declared hosts',
   'admin.plugins.updateConsentTitle': 'This update needs new permissions',
   'admin.plugins.updateConsentBody': '{name} v{version} is asking for rights you haven\'t granted yet. The new version is installed but stays off until you approve it.',

@@ -8,13 +8,26 @@ import {
   Param,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import type { User } from '../../types';
 import { DaysService } from './days.service';
 import { DayReorderError } from '../../services/dayService';
+import { dayExists as assignmentDayTripExists } from '../../services/assignmentService';
+import { computeMixedDayRoute, type RouteLegDispatchResult } from '../../services/mixedDayRouteService';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { PluginRuntimeService } from '../plugins/plugin-runtime.service';
+import { RouteProviderRegistryService } from '../plugins/route-provider-registry.service';
+
+function isExpectedRouteCancellation(err: unknown): { status: number; message: string } | null {
+  if (!(err instanceof Error)) return null;
+  if (err.message === 'route_timeout' || err.name === 'TimeoutError') return { status: 504, message: 'route_timeout' };
+  if (err.message === 'route_cancelled' || err.name === 'AbortError') return { status: 499, message: 'route_cancelled' };
+  return null;
+}
 
 /**
  * /api/trips/:tripId/days — trip itinerary days.
@@ -27,7 +40,11 @@ import { CurrentUser } from '../auth/current-user.decorator';
 @Controller('api/trips/:tripId/days')
 @UseGuards(JwtAuthGuard)
 export class DaysController {
-  constructor(private readonly days: DaysService) {}
+  constructor(
+    private readonly days: DaysService,
+    private readonly routeProviders: RouteProviderRegistryService,
+    private readonly pluginRuntime: PluginRuntimeService,
+  ) {}
 
   private requireTrip(tripId: string, user: User) {
     const trip = this.days.verifyTripAccess(tripId, user.id);
@@ -92,6 +109,54 @@ export class DaysController {
     }
     this.days.broadcast(tripId, 'day:reordered', { orderedIds: body.orderedIds }, socketId);
     return { success: true };
+  }
+
+  @Get(':id/route')
+  async dayRoute(
+    @CurrentUser() user: User,
+    @Param('tripId') tripId: string,
+    @Param('id') id: string,
+    @Req() req?: Request,
+  ) {
+    this.requireTrip(tripId, user);
+    if (!assignmentDayTripExists(id, tripId)) {
+      throw new HttpException({ error: 'Day not found' }, 404);
+    }
+    const controller = new AbortController();
+    const abortForClose = () => {
+      if (!controller.signal.aborted) controller.abort(new Error('route_cancelled'));
+    };
+    req?.on?.('close', abortForClose);
+    const t = setTimeout(() => controller.abort(new Error('route_timeout')), 72000);
+    try {
+      const result = await computeMixedDayRoute(Number(tripId), Number(id), {
+        signal: controller.signal,
+        dispatchPluginLeg: async (req, { signal }) => {
+          const pluginId = this.routeProviders.getProvider(req.mode);
+          if (!pluginId) throw new Error('route_provider_not_found');
+          return await this.pluginRuntime.invokeHook(
+            pluginId,
+            'routeProvider',
+            'routeLeg',
+            [req],
+            { signal, actingUserId: user.id },
+          ) as RouteLegDispatchResult;
+        },
+      });
+      clearTimeout(t);
+      req?.off?.('close', abortForClose);
+      return result;
+    } catch (e: unknown) {
+      clearTimeout(t);
+      req?.off?.('close', abortForClose);
+      const cancellation = isExpectedRouteCancellation(e);
+      if (cancellation) {
+        throw new HttpException({ error: cancellation.message }, cancellation.status);
+      }
+      const msg = e instanceof Error ? e.message : 'route_geometry_failed';
+      const code = msg === 'trip_not_found' || msg === 'day_not_found' ? 404 : 500;
+      throw new HttpException({ error: msg }, code);
+    }
   }
 
   @Put(':id')

@@ -166,4 +166,67 @@ describe('PluginSupervisor — isolated runtime', () => {
     await sup.disable('sticky'); // resolves via the kill-grace SIGKILL path
     expect(sup.isActive('sticky')).toBe(false);
   });
+
+  it('reports routeProvider hook availability on load and invokes routeLeg', async () => {
+    sup = makeSupervisor([]);
+    writePlugin(
+      'routestub',
+      `const { definePlugin } = require('trek-plugin-sdk');
+      module.exports = definePlugin({
+        hooks: {
+          routeProvider: {
+            modes() { return ['stub']; },
+            routeLeg(req) {
+              return Promise.resolve({
+                coords: [[req.from.lat, req.from.lng], [req.to.lat, req.to.lng]],
+                distanceM: 42,
+              });
+            },
+          },
+        },
+      });`,
+    );
+    await sup.activate('routestub', new Set(['hook:route-provider']), {});
+    expect(sup.hooksOf('routestub')).toEqual({ routeProvider: true });
+
+    const modes = (await sup.invokeHook('routestub', 'routeProvider', 'modes', [])) as string[];
+    expect(modes).toEqual(['stub']);
+
+    const leg = (await sup.invokeHook('routestub', 'routeProvider', 'routeLeg', [{
+      mode: 'stub', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 }, legKey: 'x', tripId: 1,
+    }])) as { distanceM: number; coords: unknown[] };
+    expect(leg.distanceM).toBe(42);
+    expect(leg.coords).toHaveLength(2);
+  });
+
+  it('cancels a slow hook invoke via AbortSignal', async () => {
+    sup = makeSupervisor([]);
+    writePlugin(
+      'slowhook',
+      `module.exports = {
+        hooks: {
+          routeProvider: {
+            modes() { return ['stub']; },
+            routeLeg() {
+              return new Promise((resolve) => setTimeout(() => resolve({ coords: [], distanceM: 1 }), 8000));
+            },
+          },
+        },
+      };`,
+    );
+    await sup.activate('slowhook', new Set(['hook:route-provider']), {});
+
+    const ac = new AbortController();
+    const late: unknown[] = [];
+    const p = sup.invokeHook('slowhook', 'routeProvider', 'routeLeg', [{
+      mode: 'stub', from: { lat: 0, lng: 0 }, to: { lat: 1, lng: 1 }, legKey: 'k', tripId: 1,
+    }], { signal: ac.signal });
+    p.then((v) => late.push(v)).catch(() => {});
+
+    await new Promise((r) => setTimeout(r, 30));
+    ac.abort();
+    await expect(p).rejects.toThrow(/cancelled/);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(late).toEqual([]);
+  });
 });

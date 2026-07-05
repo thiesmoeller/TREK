@@ -8,8 +8,10 @@ import { createRealRpcHost, closePluginDataDb } from './host/create-rpc-host';
 import { removePluginData } from './host/plugin-data.service';
 import { isKnownPermission } from './protocol/envelope';
 import { discoverPlugins } from './install/discovery';
+import { parseStoredCapabilities } from './install/manifest';
 import { pluginCodeDir } from './paths';
 import { PluginRegistryService } from './registry/registry.service';
+import { RouteProviderRegistryService } from './route-provider-registry.service';
 
 const HTTP_OUTBOUND = 'http:outbound:';
 
@@ -34,6 +36,7 @@ interface PluginRow {
   permissions: string;
   granted_permissions: string;
   config: string;
+  capabilities: string;
 }
 
 @Injectable()
@@ -53,9 +56,11 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     },
   });
 
-  // Optional at the type level so tests can `new PluginRuntimeService()` without a
-  // registry; Nest always injects the real one (the provider is in the module).
-  constructor(private readonly registry?: PluginRegistryService) {}
+  // Nest always injects the real registry; tests may omit it.
+  constructor(
+    private readonly registry?: PluginRegistryService,
+    private readonly routeProviders?: RouteProviderRegistryService,
+  ) {}
 
   onModuleInit(): void {
     if (!pluginsEnabled()) return;
@@ -97,7 +102,7 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
    * update consent dialog), and otherwise throws PluginConsentRequired.
    */
   async activate(id: string, consentWiden = false): Promise<void> {
-    const row = db.prepare('SELECT id, status, permissions, granted_permissions, config FROM plugins WHERE id = ?').get(id) as
+    const row = db.prepare('SELECT id, status, permissions, granted_permissions, config, capabilities FROM plugins WHERE id = ?').get(id) as
       | PluginRow
       | undefined;
     if (!row) throw new Error(`plugin ${id} not found`);
@@ -118,12 +123,20 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
     db.prepare('UPDATE plugins SET granted_permissions = ?, enabled = 1 WHERE id = ?').run(JSON.stringify(declared), id);
     const config = decryptConfig(parseObject(row.config));
     const egress = declared.filter((p) => p.startsWith('http:outbound:')).map((p) => p.slice('http:outbound:'.length));
-    await this.supervisor.activate(id, new Set(declared), config, egress);
+    const routeModes = parseStoredCapabilities(row.capabilities).routeModes ?? [];
+    try {
+      if (routeModes.length) this.routeProviders?.register(id, routeModes);
+      await this.supervisor.activate(id, new Set(declared), config, egress);
+    } catch (e) {
+      this.routeProviders?.unregister(id);
+      throw e;
+    }
   }
 
   async deactivate(id: string): Promise<void> {
     await this.supervisor.disable(id);
     closePluginDataDb(id);
+    this.routeProviders?.unregister(id);
     db.prepare("UPDATE plugins SET status = 'inactive', enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   }
 
@@ -170,6 +183,7 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   async uninstall(id: string, deleteData: boolean): Promise<void> {
     await this.supervisor.disable(id);
     closePluginDataDb(id);
+    this.routeProviders?.unregister(id);
     // Code always goes; the DB metadata + fields go so it disappears from the UI.
     fs.rmSync(pluginCodeDir(id), { recursive: true, force: true });
     db.prepare('DELETE FROM plugins WHERE id = ?').run(id);
@@ -199,8 +213,38 @@ export class PluginRuntimeService implements OnModuleInit, OnModuleDestroy {
   routesOf(id: string): PluginRouteInfo[] {
     return this.supervisor.routesOf(id);
   }
+  hooksOf(id: string) {
+    return this.supervisor.hooksOf(id);
+  }
   invoke(id: string, method: string, params: Record<string, unknown>, actingUserId?: number): Promise<unknown> {
     return this.supervisor.invoke(id, method, params, { actingUserId });
+  }
+
+  /**
+   * Call a plugin hook (e.g. routeProvider.routeLeg) in the isolated child.
+   * Requires the plugin to be active and granted `hook:route-provider`.
+   */
+  invokeHook(
+    pluginId: string,
+    hook: string,
+    method: string,
+    args: unknown[],
+    opts: { signal?: AbortSignal; actingUserId?: number; timeoutMs?: number } = {},
+  ): Promise<unknown> {
+    const row = db.prepare('SELECT granted_permissions FROM plugins WHERE id = ?').get(pluginId) as
+      | { granted_permissions: string }
+      | undefined;
+    if (!row) throw new Error(`plugin ${pluginId} not found`);
+    if (!parseArray(row.granted_permissions).includes('hook:route-provider')) {
+      throw new Error(`plugin ${pluginId} lacks hook:route-provider permission`);
+    }
+    if (!this.supervisor.isActive(pluginId)) {
+      throw new Error(`plugin ${pluginId} is not active`);
+    }
+    if (hook === 'routeProvider' && !this.supervisor.hooksOf(pluginId).routeProvider) {
+      throw new Error(`plugin ${pluginId} does not implement routeProvider hook`);
+    }
+    return this.supervisor.invokeHook(pluginId, hook, method, args, opts);
   }
 }
 
